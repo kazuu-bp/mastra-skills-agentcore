@@ -2,6 +2,13 @@ import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
 import { weatherTool } from '../tools/weather-tool';
 import { scorers } from '../scorers/weather-scorer';
+import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
+import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
+
+const bedrock = createAmazonBedrock({
+  region: 'ap-northeast-1',
+  credentialProvider: fromNodeProviderChain(),
+});
 
 export const weatherAgent = new Agent({
   id: 'weather-agent',
@@ -20,7 +27,7 @@ export const weatherAgent = new Agent({
 
       Use the weatherTool to fetch current weather data.
 `,
-  model: 'anthropic/claude-sonnet-4-5',
+  model: bedrock('jp.anthropic.claude-haiku-4-5-20251001-v1:0'),
   tools: { weatherTool },
   scorers: {
     toolCallAppropriateness: {
