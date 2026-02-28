@@ -14,6 +14,29 @@ Open [http://localhost:4111](http://localhost:4111) in your browser to access [M
 
 You can start editing files inside the `src/mastra` directory. The development server will automatically reload whenever you make changes.
 
+## AgentCore サーバーの開発とテスト
+
+Mastra自体のDevサーバーとは別に、本プロジェクトではAWS Bedrock AgentCore用のFastifyベースの独立したAPIサーバー（`src/agentcore.ts`）を起動することができます。
+
+### 起動方法
+以下のコマンドを実行して、ローカルでAgentCoreサーバーを立ち上げます。
+```shell
+npm run dev:agentcore
+```
+デフォルトでは `http://127.0.0.1:8080` （ポート `8080`）でサーバーが起動します。
+
+### テスト方法
+サーバーが立ち上がった後、別ターミナルを開き、`curl` などを使ってエンドポイントにPOSTリクエストを送信することでテストできます。
+
+```shell
+curl -X POST http://127.0.0.1:8080/invocations \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -d '{"sessionId": "test-session-1", "prompt": "明日の天気を教えてください"}'
+```
+
+ストリーミング（Server-Sent Events）のレスポンスが返ってくることを確認してください。
+
 ## Learn more
 
 To learn more about Mastra, visit our [documentation](https://mastra.ai/docs/). Your bootstrapped project includes example code for [agents](https://mastra.ai/docs/agents/overview), [tools](https://mastra.ai/docs/agents/using-tools), [workflows](https://mastra.ai/docs/workflows/overview), [scorers](https://mastra.ai/docs/evals/overview), and [observability](https://mastra.ai/docs/observability/overview).
