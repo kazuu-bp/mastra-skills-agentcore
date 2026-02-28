@@ -8,3 +8,5 @@ dist
 *.db-*
 .netlify
 .vercel
+cdk.out
+mastra/node_modules

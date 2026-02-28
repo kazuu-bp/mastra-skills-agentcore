@@ -1,50 +1,100 @@
 # mastra-skills-agentcore
 
-Welcome to your new [Mastra](https://mastra.ai/) project! We're excited to see what you'll build.
+AWS Bedrock AgentCore上で動作するMastraエージェント。天気エージェントをサンプルとして実装しており、CDKでワンコマンドデプロイできます。
 
-## Getting Started
+## フォルダ構成
 
-Start the development server:
-
-```shell
-npm run dev
+```
+/
+├── bin/app.ts                  # CDKエントリポイント
+├── lib/agentcore-stack.ts      # CDKスタック（ECR + AgentCore Runtime + IAM）
+├── mastra/                     # Mastraエージェント一式
+│   ├── src/
+│   │   ├── agentcore.ts        # AgentCore サーバー（エントリポイント）
+│   │   └── mastra/
+│   │       ├── index.ts        # Mastra インスタンス定義
+│   │       ├── agents/         # エージェント定義
+│   │       ├── tools/          # ツール定義
+│   │       ├── workflows/      # ワークフロー定義
+│   │       └── scorers/        # スコアラー定義
+│   ├── Dockerfile              # コンテナイメージ定義（マルチステージビルド）
+│   └── package.json            # Mastra依存関係
+├── package.json                # CDK依存関係
+├── cdk.json                    # CDK設定
+└── tsconfig.json               # CDK TypeScript設定
 ```
 
-Open [http://localhost:4111](http://localhost:4111) in your browser to access [Mastra Studio](https://mastra.ai/docs/getting-started/studio). It provides an interactive UI for building and testing your agents, along with a REST API that exposes your Mastra application as a local service. This lets you start building without worrying about integration right away.
+## デプロイ
 
-You can start editing files inside the `src/mastra` directory. The development server will automatically reload whenever you make changes.
+### 前提条件
 
-## AgentCore サーバーの開発とテスト
+- AWS CLI 設定済み（ `aws configure` または `aws login` ）
+- CDK Bootstrap 済み（初回のみ）
 
-Mastra自体のDevサーバーとは別に、本プロジェクトではAWS Bedrock AgentCore用のFastifyベースの独立したAPIサーバー（`src/agentcore.ts`）を起動することができます。
-
-### 起動方法
-以下のコマンドを実行して、ローカルでAgentCoreサーバーを立ち上げます。
 ```shell
-npm run dev:agentcore
+# 初回のみ
+npx cdk bootstrap
 ```
-デフォルトでは `http://127.0.0.1:8080` （ポート `8080`）でサーバーが起動します。
 
-### テスト方法
-サーバーが立ち上がった後、別ターミナルを開き、`curl` などを使ってエンドポイントにPOSTリクエストを送信することでテストできます。
+### デプロイ実行
+
+```shell
+npm run cdk:deploy
+```
+
+`--require-approval never` で確認なしにデプロイされます。
+
+### その他のCDKコマンド
+
+```shell
+# テンプレート確認
+npm run cdk:synth
+
+# 削除
+npm run cdk:destroy
+```
+
+## デプロイ済みエージェントのテスト
+
+デプロイ後、AgentCore RuntimeのARNが出力されます。
+
+### 1. AgentCore IDentity の取得
+
+```shell
+# Runtime ARN からエンドポイントURLを確認
+aws bedrock-agentcore get-agent-runtime \
+  --agent-runtime-id <RUNTIME_ID>
+```
+
+### 2. エンドポイントの呼び出し
+
+```shell
+aws bedrock-agentcore invoke-agent-runtime \
+  --agent-runtime-id <RUNTIME_ID> \
+  --payload '{"prompt": "東京の今日の天気は？"}' \
+  --content-type application/json \
+  output.txt && cat output.txt
+```
+
+## AgentCore サーバーのローカルテスト
+
+```shell
+# Mastraディレクトリに移動して起動
+cd mastra && npm run dev:agentcore
+```
+
+別ターミナルからテスト:
 
 ```shell
 curl -X POST http://127.0.0.1:8080/invocations \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
-  -d '{"sessionId": "test-session-1", "prompt": "明日の天気を教えてください"}'
+  -d '{"sessionId": "test-session-1", "prompt": "東京の明日の天気は？"}'
 ```
 
-ストリーミング（Server-Sent Events）のレスポンスが返ってくることを確認してください。
+## Mastra Studio（開発用）
 
-## Learn more
-
-To learn more about Mastra, visit our [documentation](https://mastra.ai/docs/). Your bootstrapped project includes example code for [agents](https://mastra.ai/docs/agents/overview), [tools](https://mastra.ai/docs/agents/using-tools), [workflows](https://mastra.ai/docs/workflows/overview), [scorers](https://mastra.ai/docs/evals/overview), and [observability](https://mastra.ai/docs/observability/overview).
-
-If you're new to AI agents, check out our [course](https://mastra.ai/course) and [YouTube videos](https://youtube.com/@mastra-ai). You can also join our [Discord](https://discord.gg/BTYqqHKUrf) community to get help and share your projects.
-
-## Deploy on Mastra Cloud
-
-[Mastra Cloud](https://cloud.mastra.ai/) gives you a serverless agent environment with atomic deployments. Access your agents from anywhere and monitor performance. Make sure they don't go off the rails with evals and tracing.
-
-Check out the [deployment guide](https://mastra.ai/docs/deployment/overview) for more details.
+```shell
+cd mastra && npm run dev
+# http://localhost:4111 でUIが開きます
+```
