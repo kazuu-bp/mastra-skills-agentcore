@@ -50,8 +50,21 @@ export class AgentcoreStack extends cdk.Stack {
     runtime.role.addToPrincipalPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
-        resources: ["arn:aws:bedrock:*::foundation-model/*"],
+        actions: [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+          "bedrock:Converse",
+          "bedrock:ConverseStream",
+          "bedrock:GetInferenceProfile",
+          "bedrock:ListInferenceProfiles",
+        ],
+        resources: [
+          // ファウンデーションモデル直接呼び出し
+          "arn:aws:bedrock:*::foundation-model/*",
+          // クロスリージョン推論プロファイル（jp.* など）
+          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/*`,
+          "arn:aws:bedrock:*::inference-profile/*",
+        ],
       })
     );
 

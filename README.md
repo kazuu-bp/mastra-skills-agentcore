@@ -56,24 +56,20 @@ npm run cdk:destroy
 
 ## デプロイ済みエージェントのテスト
 
-デプロイ後、AgentCore RuntimeのARNが出力されます。
+`cdk deploy` 完了後に出力される `RuntimeArn` を使って直接呼び出せます。
 
-### 1. AgentCore IDentity の取得
+### エンドポイントの呼び出し
 
-```shell
-# Runtime ARN からエンドポイントURLを確認
-aws bedrock-agentcore get-agent-runtime \
-  --agent-runtime-id <RUNTIME_ID>
-```
-
-### 2. エンドポイントの呼び出し
 
 ```shell
-aws bedrock-agentcore invoke-agent-runtime \
-  --agent-runtime-id <RUNTIME_ID> \
-  --payload '{"prompt": "東京の今日の天気は？"}' \
-  --content-type application/json \
-  output.txt && cat output.txt
+# ARNを環境変数に設定
+export RUNTIME_ARN=<cdk deployで出力されたRuntimeArn>
+
+# テスト実行
+npm run test:invoke
+
+# プロンプトを引数で指定
+npx tsx test-invoke.mts "大阪の今日の天気は?"
 ```
 
 ## AgentCore サーバーのローカルテスト
