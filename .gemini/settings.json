@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "bedrock-agentcore-mcp-server": {
+      "command": "uvx",
+      "args": [
+        "awslabs.amazon-bedrock-agentcore-mcp-server@latest"
+      ],
+      "trust": true
+    },
+    "aws-mcp": {
+      "command": "uvx",
+      "timeout": 100000,
+      "args": [
+        "mcp-proxy-for-aws@latest",
+        "https://aws-mcp.us-east-1.api.aws/mcp",
+        "--metadata",
+        "AWS_REGION=ap-northeast-1"
+      ]
+    }
+  }
+}
