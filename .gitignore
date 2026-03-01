@@ -10,7 +10,10 @@ dist
 .vercel
 cdk.out
 mastra/node_modules
-public
 
-s3/workspace/.agents/skills
+agent/src/mastra/public/workspace/.agents/skills/*
+!agent/src/mastra/public/workspace/.agents/skills/pptx/
+
+s3/workspace/.agents/skills/*
+!s3/workspace/.agents/skills/pptx/
 
