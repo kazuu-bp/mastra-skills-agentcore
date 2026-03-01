@@ -28,6 +28,7 @@ export class AgentcoreStack extends cdk.Stack {
         ".env",
         ".env.*",
         "output.txt",
+        "public"
       ],
     });
 

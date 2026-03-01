@@ -1,8 +1,9 @@
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
-import { scorers } from '../scorers/weather-scorer';
+import { scorers } from '../scorers/skills-scorer';
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
+import { skillsWorkspace } from '../workspaces/skills-wrokspace';
 
 const bedrock = createAmazonBedrock({
   region: 'ap-northeast-1',
@@ -12,6 +13,7 @@ const bedrock = createAmazonBedrock({
 export const skillsAgent = new Agent({
   id: 'skills-agent',
   name: 'Skills Agent',
+  workspace: skillsWorkspace,
   instructions: `
     あなたは、スキルを使ってユーザーを助けるAIエージェントです。
     ユーザーの質問を理解し、適切なスキルを選択して実行してください。

@@ -10,3 +10,4 @@ dist
 .vercel
 cdk.out
 mastra/node_modules
+public

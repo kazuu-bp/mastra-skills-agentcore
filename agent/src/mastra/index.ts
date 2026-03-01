@@ -4,7 +4,7 @@ import { PinoLogger } from '@mastra/loggers';
 import { LibSQLStore } from '@mastra/libsql';
 import { Observability, DefaultExporter, CloudExporter, SensitiveDataFilter } from '@mastra/observability';
 import { skillsAgent } from './agents/skills-agent';
-import { toolCallAppropriatenessScorer, completenessScorer, translationScorer } from './scorers/weather-scorer';
+import { toolCallAppropriatenessScorer, completenessScorer, translationScorer } from './scorers/skills-scorer';
 
 export const mastra = new Mastra({
   workflows: {},
