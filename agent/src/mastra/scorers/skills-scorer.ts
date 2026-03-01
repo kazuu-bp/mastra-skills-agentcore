@@ -6,6 +6,14 @@ import {
   getUserMessageFromRunInput,
 } from '@mastra/evals/scorers/utils';
 import { createScorer } from '@mastra/core/evals';
+import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
+import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
+
+// Bedrock 経由でモデルを使用
+const bedrock = createAmazonBedrock({
+  region: 'ap-northeast-1',
+  credentialProvider: fromNodeProviderChain(),
+});
 
 export const toolCallAppropriatenessScorer = createToolCallAccuracyScorerCode({
   expectedTool: 'weatherTool',
@@ -14,7 +22,7 @@ export const toolCallAppropriatenessScorer = createToolCallAccuracyScorerCode({
 
 export const completenessScorer = createCompletenessScorer();
 
-// Custom LLM-judged scorer: evaluates if non-English locations are translated appropriately
+// カスタム LLM 判定 scorer: 非英語の地名が適切に翻訳されているか評価
 export const translationScorer = createScorer({
   id: 'translation-quality-scorer',
   name: 'Translation Quality',
@@ -22,7 +30,7 @@ export const translationScorer = createScorer({
     'Checks that non-English location names are translated and used correctly',
   type: 'agent',
   judge: {
-    model: 'anthropic/claude-sonnet-4-5',
+    model: bedrock('jp.anthropic.claude-haiku-4-5-20251001-v1:0'),
     instructions:
       'You are an expert evaluator of translation quality for geographic locations. ' +
       'Determine whether the user text mentions a non-English location and whether the assistant correctly uses an English translation of that location. ' +
