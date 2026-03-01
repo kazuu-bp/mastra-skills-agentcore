@@ -13,10 +13,10 @@ export class AgentcoreStack extends cdk.Stack {
     // ========================================
     // ECR（deploy-time-build によるリモートビルド）
     // ========================================
-    // mastra/ ディレクトリの Dockerfile を使用して
+    // agent/ ディレクトリの Dockerfile を使用して
     // CodeBuild 上でコンテナイメージをビルド・ECR へプッシュする
     const image = new ContainerImageBuild(this, "Image", {
-      directory: path.join(__dirname, "../mastra"), // mastra/ ディレクトリ
+      directory: path.join(__dirname, "../agent"), // agent/ ディレクトリ
       platform: Platform.LINUX_ARM64,
       exclude: [
         "node_modules",
@@ -58,13 +58,7 @@ export class AgentcoreStack extends cdk.Stack {
           "bedrock:GetInferenceProfile",
           "bedrock:ListInferenceProfiles",
         ],
-        resources: [
-          // ファウンデーションモデル直接呼び出し
-          "arn:aws:bedrock:*::foundation-model/*",
-          // クロスリージョン推論プロファイル（jp.* など）
-          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/*`,
-          "arn:aws:bedrock:*::inference-profile/*",
-        ],
+        resources: ["*"],
       })
     );
 

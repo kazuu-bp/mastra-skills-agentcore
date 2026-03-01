@@ -7,10 +7,11 @@
     "scripts": {
         "build": "tsc",
         "watch": "tsc -w",
+        "login": "aws sts get-caller-identity > /dev/null 2>&1 || aws login",
         "cdk": "cdk",
         "cdk:synth": "cdk synth",
-        "cdk:deploy": "cdk deploy --require-approval never",
-        "cdk:destroy": "cdk destroy",
+        "cdk:deploy": "npm run login && cdk deploy --require-approval never",
+        "cdk:destroy": "npm run login && cdk destroy",
         "test:invoke": "npx tsx test-invoke.mts"
     },
     "devDependencies": {
