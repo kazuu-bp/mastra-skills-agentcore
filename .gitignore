@@ -11,3 +11,6 @@ dist
 cdk.out
 mastra/node_modules
 public
+
+s3/workspace/.agents/skills
+

@@ -3,8 +3,8 @@ import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
 import { LibSQLStore } from '@mastra/libsql';
 import { Observability, DefaultExporter, CloudExporter, SensitiveDataFilter } from '@mastra/observability';
-import { skillsAgent } from './agents/skills-agent';
-import { toolCallAppropriatenessScorer, completenessScorer, translationScorer } from './scorers/skills-scorer';
+import { skillsAgent } from './agents/skills-agent.js';
+import { toolCallAppropriatenessScorer, completenessScorer, translationScorer } from './scorers/skills-scorer.js';
 
 export const mastra = new Mastra({
   workflows: {},

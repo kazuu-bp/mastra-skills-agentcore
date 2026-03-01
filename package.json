@@ -12,7 +12,7 @@
         "cdk:synth": "cdk synth",
         "cdk:deploy": "npm run login && cdk deploy --require-approval never",
         "cdk:destroy": "npm run login && cdk destroy",
-        "test:invoke": "npx tsx test-invoke.mts"
+        "test:invoke": "npx tsx tests/test-invoke.mts"
     },
     "devDependencies": {
         "@types/node": "^22.7.9",

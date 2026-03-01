@@ -21,7 +21,7 @@ if (!agentArn) {
 }
 
 // プロンプト（引数で上書き可能）
-const prompt = process.argv[2] ?? '東京の今日の天気は?'
+const prompt = process.argv[2] ?? '何ができる？'
 
 console.log(`Invoking AgentCore Runtime...\nPrompt: ${prompt}\n`)
 

@@ -4,11 +4,27 @@ import { Platform } from "aws-cdk-lib/aws-ecr-assets";
 import { ContainerImageBuild } from "@cdklabs/deploy-time-build";
 import * as agentcore from "@aws-cdk/aws-bedrock-agentcore-alpha";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as s3 from "aws-cdk-lib/aws-s3";
+import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 import * as path from "path";
 
 export class AgentcoreStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    // ========================================
+    // S3（スキル・ワークスペース同期用）
+    // ========================================
+    const skillsBucket = new s3.Bucket(this, "SkillsBucket", {
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      autoDeleteObjects: false,
+    });
+
+    new s3deploy.BucketDeployment(this, "DeploySkillsWorkspace", {
+      sources: [s3deploy.Source.asset(path.join(__dirname, "../s3/workspace"))],
+      destinationBucket: skillsBucket,
+      destinationKeyPrefix: "workspace",
+    });
 
     // ========================================
     // ECR（deploy-time-build によるリモートビルド）
@@ -45,6 +61,10 @@ export class AgentcoreStack extends cdk.Stack {
       runtimeName: `mastra_agentcore`,
       agentRuntimeArtifact: agentRuntimeArtifact,
       description: "Mastra Skills AgentCore Runtime",
+      environmentVariables: {
+        SKILLS_BUCKET_NAME: skillsBucket.bucketName,
+        WORKSPACE_PATH: "./workspace",
+      },
     });
 
     // Bedrock モデル呼び出し権限を付与
@@ -63,6 +83,9 @@ export class AgentcoreStack extends cdk.Stack {
       })
     );
 
+    // S3 読み書き権限を付与
+    skillsBucket.grantReadWrite(runtime.role);
+
     // ========================================
     // CloudFormation Outputs
     // ========================================
@@ -70,5 +93,11 @@ export class AgentcoreStack extends cdk.Stack {
       value: runtime.agentRuntimeArn,
       description: "AgentCore Runtime の ARN",
     });
+
+    new cdk.CfnOutput(this, "SkillsBucketName", {
+      value: skillsBucket.bucketName,
+      description: "スキル同期用 S3 バケット名",
+    });
   }
 }
+
