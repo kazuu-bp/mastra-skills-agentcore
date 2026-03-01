@@ -5,8 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "mastra dev",
-    "dev:agentcore": "tsx src/agentcore.ts",
+    "login": "aws sts get-caller-identity > /dev/null 2>&1 || aws login",
+    "dev": "npm run login && mastra dev",
+    "dev:agentcore": "npm run login && tsx src/agentcore.ts",
     "build": "mastra build",
     "start": "mastra start"
   },
