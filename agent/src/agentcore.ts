@@ -1,4 +1,4 @@
-import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
+import { BedrockAgentCoreApp, type HealthStatus } from 'bedrock-agentcore/runtime';
 import { z } from 'zod';
 import { mastra } from './mastra/index.js';
 import { syncFromS3, syncToS3 } from './hooks/s3-sync.js';
@@ -25,6 +25,7 @@ const app = new BedrockAgentCoreApp({
       await syncToS3();
     },
   },
+  pingHandler: async (): Promise<HealthStatus> => 'Healthy',
 });
 
 // サーバーを起動
