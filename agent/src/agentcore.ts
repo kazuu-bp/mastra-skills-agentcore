@@ -21,8 +21,11 @@ const app = new BedrockAgentCoreApp({
         yield { data: { text: value } }
       }
 
-      // invoke後: workspace変更をS3にUP
-      await syncToS3();
+      // invoke後: workspace/outputs の最新ファイルをS3にアップロードし、URLがあれば返す
+      const outputUrl = await syncToS3();
+      if (outputUrl) {
+        yield { data: { text: `\n\n📎  [出力ファイル](${outputUrl})` } };
+      }
     },
   },
   pingHandler: async (): Promise<HealthStatus> => 'Healthy',

@@ -1,14 +1,20 @@
-import { S3Client } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import S3SyncClientModule from 's3-sync-client';
-import { mkdir, readdir } from 'fs/promises';
-import { join } from 'path';
+import { mkdir, readdir, readFile, stat } from 'fs/promises';
+
+import { join, relative } from 'path';
+
 const s3Client = new S3Client({});
 const S3SyncClient = (S3SyncClientModule as any).default || S3SyncClientModule;
 const { sync } = new S3SyncClient({ client: s3Client });
 
 const BUCKET_NAME = process.env.SKILLS_BUCKET_NAME || '';
 const WORKSPACE_PATH = process.env.WORKSPACE_PATH || './workspace/';
-const WORKSPACE_PATH_OUTPUTS = `${WORKSPACE_PATH}/.agents/outputs/`;
+const WORKSPACE_PATH_OUTPUTS = `${WORKSPACE_PATH}/outputs/`;
+
+/** presignedURL の有効期限（秒） */
+const PRESIGNED_URL_EXPIRES_IN = 180;
 
 
 /**
@@ -44,25 +50,75 @@ export async function syncFromS3(): Promise<void> {
 }
 
 /**
- * ローカルworkspaceの変更ファイルをS3にUPする
+ * workspace/outputs にある最新ファイルを S3 にアップロードし、署名付きURL（3分）を返す
  * invoke後に呼び出す
+ *
+ * 複数回のやり取りで outputs に複数ファイルが溜まった場合は
+ * 更新日時が最も新しいファイルのみを対象とする。
+ *
+ * @returns 最新ファイルの署名付きURL（ファイルがなければ null）
  */
-export async function syncToS3(): Promise<void> {
+export async function syncToS3(): Promise<string | null> {
   if (!BUCKET_NAME) {
     console.log('[s3-sync] SKILLS_BUCKET_NAME が未設定のためスキップ');
-    return;
+    return null;
   }
 
-  console.log(`[s3-sync] ローカル → S3 同期開始 (bucket: ${BUCKET_NAME})`);
+  console.log(`[s3-sync] outputs → S3 アップロード開始 (bucket: ${BUCKET_NAME})`);
+
+  // outputs ディレクトリが存在しない場合はスキップ（エラーなし）
+  let entries: import('fs').Dirent[];
   try {
-    // 同期元のディレクトリが存在しない場合は作成しておく（ENOENTエラー回避）
-    await mkdir(WORKSPACE_PATH_OUTPUTS, { recursive: true });
+    entries = await readdir(WORKSPACE_PATH_OUTPUTS, { recursive: true, withFileTypes: true });
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') {
+      console.log('[s3-sync] outputs ディレクトリが存在しないためスキップ');
+      return null;
+    }
+    console.error('[s3-sync] outputs ディレクトリ読み取りエラー:', error);
+    return null;
+  }
 
-    // ./workspace/.agents/outputs/ -> s3://BUCKET/workspace/.agents/outputs/ への同期
-    await sync(`${WORKSPACE_PATH_OUTPUTS}`, `s3://${BUCKET_NAME}/workspace/.agents/outputs/`, { del: false });
+  // ファイルのみ抽出
+  const fileEntries = entries.filter((e) => e.isFile());
+  if (fileEntries.length === 0) {
+    console.log('[s3-sync] アップロード対象ファイルなし');
+    return null;
+  }
 
-    console.log(`[s3-sync] ローカル → S3 同期完了`);
+  // stat を使って更新日時が最も新しいファイルを選択する
+  // （複数回のやり取りで outputs に古いファイルが残っていても最新1件のみ対象）
+  const fileStats = await Promise.all(
+    fileEntries.map(async (e) => {
+      const localPath = join((e as any).parentPath ?? (e as any).path ?? WORKSPACE_PATH_OUTPUTS, e.name);
+      const s = await stat(localPath);
+      return { localPath, mtimeMs: s.mtimeMs };
+    }),
+  );
+  const newest = fileStats.reduce((a, b) => (a.mtimeMs >= b.mtimeMs ? a : b));
+  console.log(`[s3-sync] 最新ファイル: ${newest.localPath} (mtime: ${new Date(newest.mtimeMs).toISOString()})`);
+
+  const s3Key = `workspace/outputs/${relative(WORKSPACE_PATH_OUTPUTS, newest.localPath)}`;
+
+  try {
+    // ファイルを読み込んでアップロード
+    const body = await readFile(newest.localPath);
+    await s3Client.send(new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: s3Key,
+      Body: body,
+    }));
+    console.log(`[s3-sync] アップロード完了: ${s3Key}`);
+
+    // 署名付きURL（3分）を生成して返す
+    const url = await getSignedUrl(
+      s3Client,
+      new GetObjectCommand({ Bucket: BUCKET_NAME, Key: s3Key }),
+      { expiresIn: PRESIGNED_URL_EXPIRES_IN },
+    );
+    return url;
   } catch (error) {
-    console.error('[s3-sync] ローカル → S3 同期エラー:', error);
+    console.error(`[s3-sync] ${newest.localPath} のアップロードエラー:`, error);
+    return null;
   }
 }
