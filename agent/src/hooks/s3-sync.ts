@@ -81,6 +81,13 @@ export async function syncToS3(): Promise<string | null> {
 
   // ファイルのみ抽出
   const fileEntries = entries.filter((e) => e.isFile());
+
+  // アップロード前にoutputsディレクトリの状態をログ出力（syncFromS3と同様）
+  const dirs = entries.filter((e) => e.isDirectory()).map((e) => join((e as any).parentPath || (e as any).path || '', e.name));
+  console.log(`[s3-sync] ${WORKSPACE_PATH_OUTPUTS} 以下: ディレクトリ ${dirs.length}個, ファイル ${fileEntries.length}個`);
+  if (dirs.length > 0) console.log(`[s3-sync] ディレクトリ一覧:\n`, dirs);
+  console.log(`[s3-sync] ファイル一覧:\n`, fileEntries.map((e) => join((e as any).parentPath ?? (e as any).path ?? WORKSPACE_PATH_OUTPUTS, e.name)));
+
   if (fileEntries.length === 0) {
     console.log('[s3-sync] アップロード対象ファイルなし');
     return null;
