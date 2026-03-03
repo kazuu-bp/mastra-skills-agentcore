@@ -27,10 +27,10 @@ const promptArgs = args.filter((a) => a !== '--genu')
 const promptText = promptArgs[0] ?? '何ができる？'
 
 console.log(`Invoking AgentCore Runtime...`)
-console.log(`Format: ${isGenu ? 'GenU' : '現行形式'}`)
+console.log(`Format: ${isGenu ? 'GenU' : '簡易形式'}`)
 console.log(`Prompt: ${promptText}\n`)
 
-// ペイロードの構築: GenU形式 or 現行形式
+// ペイロードの構築: GenU形式 or 簡易形式
 let payload: string
 if (isGenu) {
   // GenU形式: messages 配列を使用
@@ -39,7 +39,7 @@ if (isGenu) {
     model: { modelId: 'jp.anthropic.claude-haiku-4-5-20251001-v1:0' },
   })
 } else {
-  // 現行形式: prompt 文字列を使用
+  // 簡易形式: prompt 文字列を使用
   payload = JSON.stringify({ prompt: promptText })
 }
 
@@ -67,7 +67,7 @@ if (response.response) {
             const deltaText = data?.event?.contentBlockDelta?.delta?.text
             if (deltaText) process.stdout.write(deltaText)
           } else {
-            // 現行形式: data.text
+            // 簡易形式: data.text
             if (data.text) process.stdout.write(data.text)
           }
         } catch {

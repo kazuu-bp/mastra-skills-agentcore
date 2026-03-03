@@ -17,11 +17,11 @@ const genuMessageSchema = z.object({
   content: z.string(),
 });
 
-// リクエストスキーマ: GenU形式と現行形式の両方を受け取れるよう定義
+// リクエストスキーマ: GenU形式と簡易形式の両方を受け取れるよう定義
 const requestSchema = z.object({
-  // 現行形式: { prompt: string }
+  // 簡易形式: { prompt: string }
   prompt: z.union([
-    z.string(),          // 現行形式: 文字列プロンプト
+    z.string(),          // 簡易形式: 文字列プロンプト
     z.array(z.any()),    // GenU形式: prompt は配列（未使用、messages を優先）
   ]).optional(),
 
@@ -59,7 +59,7 @@ const app = new BedrockAgentCoreApp({
           .find((m) => m.role === 'user');
         promptText = lastUserMsg?.content ?? '';
       } else {
-        // 現行形式: prompt は文字列
+        // 簡易形式: prompt は文字列
         promptText = typeof request.prompt === 'string' ? request.prompt : '';
       }
 
@@ -96,7 +96,7 @@ const app = new BedrockAgentCoreApp({
             },
           };
         } else {
-          // 現行形式の出力
+          // 簡易形式の出力
           yield { data: { text: value } };
         }
         contentBlockIndex++;

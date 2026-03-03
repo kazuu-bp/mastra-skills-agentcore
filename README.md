@@ -97,7 +97,7 @@ npm run cdk:destroy
 # ARNを環境変数に設定
 export RUNTIME_ARN=<cdk deployで出力されたRuntimeArn>
 
-# テスト実行（現行形式: { prompt: string }）
+# テスト実行（簡易形式: { prompt: string }）
 npm run test:invoke
 
 # プロンプトを引数で指定
@@ -110,9 +110,9 @@ npm run test:invoke -- --genu "pptxファイル作って"
 
 ### GenU互換の入出力形式
 
-このAgentCoreは現行形式とGenU（generative-ai-use-cases）形式の**両方**に対応しています。
+このAgentCoreは簡易形式とGenU（generative-ai-use-cases）形式の**両方**に対応しています。
 
-| | 現行形式 | GenU形式 |
+| | 簡易形式 | GenU形式 |
 |---|---|---|
 | **入力判定** | `prompt` が文字列 | `messages` 配列が存在 |
 | **入力例** | `{ "prompt": "質問" }` | `{ "messages": [{"role":"user","content":"質問"}], "model": {...} }` |
