@@ -84,12 +84,14 @@ const app = new BedrockAgentCoreApp({
         if (done) break;
 
         if (isGenu) {
-          // GenU形式の出力: contentBlockDelta
+          // GenU形式の出力: contentBlockDelta を data キーで包んで返す
           yield {
-            event: {
-              contentBlockDelta: {
-                delta: { text: value },
-                contentBlockIndex,
+            data: {
+              event: {
+                contentBlockDelta: {
+                  delta: { text: value },
+                  contentBlockIndex,
+                },
               },
             },
           };
@@ -106,10 +108,12 @@ const app = new BedrockAgentCoreApp({
         const linkText = `\n\n📎  [出力ファイル](${outputUrl})`;
         if (isGenu) {
           yield {
-            event: {
-              contentBlockDelta: {
-                delta: { text: linkText },
-                contentBlockIndex,
+            data: {
+              event: {
+                contentBlockDelta: {
+                  delta: { text: linkText },
+                  contentBlockIndex,
+                },
               },
             },
           };
