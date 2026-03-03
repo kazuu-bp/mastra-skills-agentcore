@@ -28,7 +28,7 @@ export const skillsAgent = new Agent({
 
     pythonモジュールのインストールを行う場合は --break-system-packages オプションを付けてインストールしてください。
 `,
-  model: bedrock('jp.anthropic.claude-haiku-4-5-20251001-v1:0'),
+  model: bedrock(process.env.MODEL || 'jp.anthropic.claude-haiku-4-5-20251001-v1:0'),
   tools: {},
   scorers: {
     toolCallAppropriateness: {
