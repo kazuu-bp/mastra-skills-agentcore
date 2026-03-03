@@ -42,7 +42,7 @@ COPY --from=builder /app/tsconfig.json ./
 # AgentCore Runtime はポート8080を使用
 EXPOSE 8080
 
-ENV MASTRA_LOG_LEVEL=error
+# ENV MASTRA_LOG_LEVEL=error
 ENV MODEL=jp.anthropic.claude-sonnet-4-5-20250929-v1:0
 
 # AgentCore サーバーを起動
