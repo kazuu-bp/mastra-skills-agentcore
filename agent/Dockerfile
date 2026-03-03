@@ -20,6 +20,17 @@ FROM node:22-slim AS production
 
 WORKDIR /app
 
+# Python3 と pip、および実行に必要なパッケージをインストール
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# python3 を python としても使えるようにシンボリックリンクを作成
+RUN ln -sf /usr/bin/python3 /usr/local/bin/python
+
 # 本番用依存関係のみインストール
 COPY package*.json ./
 RUN npm ci --omit=dev && npm install tsx
