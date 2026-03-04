@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
+import { LibSQLStore } from '@mastra/libsql';
 import { scorers } from '../scorers/skills-scorer.js';
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
@@ -53,5 +54,10 @@ export const skillsAgent = new Agent({
       },
     },
   },
-  memory: new Memory(),
+  memory: new Memory({
+    storage: new LibSQLStore({
+      id: 'libsql-storage',
+      url: 'file:./agent.db',
+    }),
+  }),
 });
