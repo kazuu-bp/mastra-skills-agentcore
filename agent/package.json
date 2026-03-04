@@ -9,6 +9,7 @@
     "dev": "npm run login && mastra dev",
     "dev:agentcore": "npm run login && tsx src/agentcore.ts",
     "build": "mastra build",
+    "build:agentcore": "tsc --project tsconfig.agentcore.json",
     "start": "mastra start"
   },
   "keywords": [],
