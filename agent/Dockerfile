@@ -52,4 +52,4 @@ ENV MODEL=jp.anthropic.claude-sonnet-4-5-20250929-v1:0
 
 
 # ビルド済み JS を node で直接実行
-CMD ["node", "--require", "@opentelemetry/auto-instrumentations-node/register", "dist/agentcore.js"]
+CMD ["node", "--require", "@opentelemetry/auto-instrumentations-node/register", "dist/agentcore.js", "--trace-warnings"]

@@ -61,7 +61,7 @@ const app = new BedrockAgentCoreApp({
   },
   invocationHandler: {
     requestSchema: requestSchema as any,
-    process: async function* (request: z.infer<typeof requestSchema>) {
+    process: async function (request: z.infer<typeof requestSchema>, context: any) {
       console.error('Request:', JSON.stringify(request, null, 2));
       // invoke前: S3からworkspaceにスキルをDL
       await syncFromS3();
@@ -83,7 +83,7 @@ const app = new BedrockAgentCoreApp({
           .find((m) => m.role === 'user');
         promptText = lastUserMsg?.content ?? '';
       } else if (isPromptArray) {
-        // GenU形式(b): prompt 配列の各要素の text を結合
+        // GenU形式(b): prompt 配列の各要素の text を结合
         promptText = (request.prompt as Array<{ text?: string }>)
           .map((p) => p.text ?? '')
           .join('');
@@ -105,49 +105,80 @@ const app = new BedrockAgentCoreApp({
       // ストリーミングで応答を返却（dynamicModelがある場合は上書き）
       const streamOptions = dynamicModel ? { model: dynamicModel } as any : undefined;
       const result = await skillsAgent.stream([{ role: 'user', content: promptText }], streamOptions);
-      const reader = result.textStream.getReader();
-      let contentBlockIndex = 0;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      // クライアントがSSEを要求しているかチェック
+      const acceptHeader = context.headers?.['accept'] || '';
+      const isSse = acceptHeader.includes('text/event-stream');
 
-        if (isGenu) {
-          // GenU形式の出力: contentBlockDelta を data キーで包んで返す
-          yield {
-            data: {
-              event: {
-                contentBlockDelta: {
-                  delta: { text: value },
-                  contentBlockIndex,
+      if (isSse) {
+        // ストリーミング（Generator）で返す
+        return (async function* () {
+          const reader = result.textStream.getReader();
+          let contentBlockIndex = 0;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            if (isGenu) {
+              // GenU形式の出力: contentBlockDelta を data キーで包んで返す
+              yield {
+                data: {
+                  event: {
+                    contentBlockDelta: {
+                      delta: { text: value },
+                      contentBlockIndex,
+                    },
+                  },
                 },
-              },
-            },
-          };
-        } else {
-          // 簡易形式の出力
-          yield { data: { text: value } };
+              };
+            } else {
+              // 簡易形式の出力
+              yield { data: { text: value } };
+            }
+            contentBlockIndex++;
+          }
+
+          // invoke後: workspace/outputs の最新ファイルをS3にアップロードし、URLがあれば返す
+          const outputUrl = await syncToS3();
+          if (outputUrl) {
+            const linkText = `\n\n📎  [出力ファイル](${outputUrl})`;
+            if (isGenu) {
+              yield {
+                data: {
+                  event: {
+                    contentBlockDelta: {
+                      delta: { text: linkText },
+                      contentBlockIndex,
+                    },
+                  },
+                },
+              };
+            } else {
+              yield { data: { text: linkText } };
+            }
+          }
+        })();
+      } else {
+        // 非ストリーミング（JSON）で返す
+        let fullText = '';
+        const reader = result.textStream.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) fullText += value;
         }
-        contentBlockIndex++;
-      }
 
-      // invoke後: workspace/outputs の最新ファイルをS3にアップロードし、URLがあれば返す
-      const outputUrl = await syncToS3();
-      if (outputUrl) {
-        const linkText = `\n\n📎  [出力ファイル](${outputUrl})`;
+        // invoke後: workspace/outputs の最新ファイルをS3にアップロードし、URLがあれば返す
+        const outputUrl = await syncToS3();
+        if (outputUrl) {
+          fullText += `\n\n📎  [出力ファイル](${outputUrl})`;
+        }
+
         if (isGenu) {
-          yield {
-            data: {
-              event: {
-                contentBlockDelta: {
-                  delta: { text: linkText },
-                  contentBlockIndex,
-                },
-              },
-            },
-          };
+          return { content: fullText };
         } else {
-          yield { data: { text: linkText } };
+          return { text: fullText };
         }
       }
     },
