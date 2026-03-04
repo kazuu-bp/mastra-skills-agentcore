@@ -1,9 +1,9 @@
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
-import { scorers } from '../scorers/skills-scorer';
+import { scorers } from '../scorers/skills-scorer.js';
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
-import { skillsWorkspace } from '../workspaces/skills-wrokspace';
+import { skillsWorkspace } from '../workspaces/skills-wrokspace.js';
 
 const bedrock = createAmazonBedrock({
   region: 'ap-northeast-1',

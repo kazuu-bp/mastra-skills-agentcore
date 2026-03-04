@@ -86,6 +86,63 @@ export class AgentcoreStack extends cdk.Stack {
     // S3 読み書き権限を付与
     skillsBucket.grantReadWrite(runtime.role);
 
+    // CloudWatch Logs 書き込み権限を付与
+    runtime.role.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "logs:DescribeLogStreams",
+          "logs:CreateLogGroup",
+        ],
+        resources: ["*"],
+      })
+    );
+
+    runtime.role.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["logs:DescribeLogGroups"],
+        resources: ["*"],
+      })
+    );
+
+    runtime.role.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+        ],
+        resources: ["*"],
+      })
+    );
+
+    // X-Ray トレーシング権限を付与
+    runtime.role.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords",
+          "xray:GetSamplingRules",
+          "xray:GetSamplingTargets",
+        ],
+        resources: ["*"],
+      })
+    );
+
+    // CloudWatch メトリクス権限を付与（bedrock-agentcore ネームスペースに限定）
+    runtime.role.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: {
+          StringEquals: { 'cloudwatch:namespace': 'bedrock-agentcore' },
+        },
+      })
+    );
+
     // ========================================
     // CloudFormation Outputs
     // ========================================

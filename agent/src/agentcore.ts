@@ -21,8 +21,9 @@ const genuMessageSchema = z.object({
 const requestSchema = z.object({
   // 簡易形式: { prompt: string }
   prompt: z.union([
-    z.string(),          // 簡易形式: 文字列プロンプト
-    z.array(z.any()),    // GenU形式: prompt は配列（未使用、messages を優先）
+    z.string(),                                    // 簡易形式: 文字列プロンプト
+    z.array(z.object({ text: z.string() })),       // GenU形式: [{text: "..."}] 配列
+    z.array(z.any()),                              // その他の配列形式（フォールバック）
   ]).optional(),
 
   // GenU形式: { messages: [...] }
@@ -40,24 +41,52 @@ const requestSchema = z.object({
 
 // AgentCore SDKでAPIサーバーを作成
 const app = new BedrockAgentCoreApp({
+  // application/octet-stream で送られてくるリクエストを JSON としてパースする
+  config: {
+    contentTypeParsers: [
+      {
+        contentType: 'application/octet-stream',
+        parseAs: 'buffer' as const,
+        parser: (req: any, body: string | Buffer, done: (err: Error | null, body?: unknown) => void) => {
+          try {
+            const text = typeof body === 'string' ? body : body.toString('utf-8');
+            const json = JSON.parse(text);
+            done(null, json);
+          } catch (err) {
+            done(err as Error);
+          }
+        },
+      },
+    ],
+  },
   invocationHandler: {
     requestSchema: requestSchema as any,
     process: async function* (request: z.infer<typeof requestSchema>) {
+      console.error('Request:', JSON.stringify(request, null, 2));
       // invoke前: S3からworkspaceにスキルをDL
       await syncFromS3();
 
       // --- フォーマット判定 ---
-      // GenU形式: messages 配列に最後のユーザーメッセージがある
-      const isGenu = Array.isArray(request.messages) && request.messages.length > 0;
+      // GenU形式の条件:
+      //   (a) messages 配列に要素がある、または
+      //   (b) prompt が配列形式（例: [{text: "hello"}]）
+      const hasMessages = Array.isArray(request.messages) && request.messages.length > 0;
+      const isPromptArray = Array.isArray(request.prompt);
+      const isGenu = hasMessages || isPromptArray;
 
       // プロンプト抽出
       let promptText: string;
-      if (isGenu) {
-        // GenU形式: messages の最後の user ロールのメッセージを使用
+      if (hasMessages) {
+        // GenU形式(a): messages の最後の user ロールのメッセージを使用
         const lastUserMsg = [...(request.messages ?? [])]
           .reverse()
           .find((m) => m.role === 'user');
         promptText = lastUserMsg?.content ?? '';
+      } else if (isPromptArray) {
+        // GenU形式(b): prompt 配列の各要素の text を結合
+        promptText = (request.prompt as Array<{ text?: string }>)
+          .map((p) => p.text ?? '')
+          .join('');
       } else {
         // 簡易形式: prompt は文字列
         promptText = typeof request.prompt === 'string' ? request.prompt : '';
