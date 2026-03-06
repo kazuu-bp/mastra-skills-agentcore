@@ -5,7 +5,9 @@ import { mkdir, readdir, readFile, stat } from 'fs/promises';
 
 import { join, relative } from 'path';
 
-const s3Client = new S3Client({});
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION || 'ap-northeast-1',
+});
 const S3SyncClient = (S3SyncClientModule as any).default || S3SyncClientModule;
 const { sync } = new S3SyncClient({ client: s3Client });
 
@@ -25,6 +27,18 @@ export async function syncFromS3(): Promise<void> {
   if (!BUCKET_NAME) {
     console.log('[s3-sync] SKILLS_BUCKET_NAME が未設定のためスキップ');
     return;
+  }
+
+  // skillsフォルダが既に存在する場合はS3からの同期をスキップする
+  const skillsDir = join(WORKSPACE_PATH, '.agents', 'skills');
+  try {
+    const s = await stat(skillsDir);
+    if (s.isDirectory()) {
+      console.log(`[s3-sync] skillsフォルダ (${skillsDir}) が既に存在するため、S3からの同期をスキップします`);
+      return;
+    }
+  } catch (err: any) {
+    // 存在しない場合はそのまま同期を実行
   }
 
   console.log(`[s3-sync] S3 → ローカル同期開始 (bucket: ${BUCKET_NAME})`);
