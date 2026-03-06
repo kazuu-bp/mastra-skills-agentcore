@@ -11,10 +11,18 @@ const bedrock = createAmazonBedrock({
   credentialProvider: fromNodeProviderChain(),
 });
 
+// ログヘルパー: 同期・バッファなしでstderrへ書き出す（CloudWatch確実出力用）
+const log = (...args: any[]) => {
+  process.stderr.write(args.map(a => typeof a === 'string' ? a : JSON.stringify(a, null, 2)).join(' ') + '\n');
+};
+
+log('[agentcore] module loaded');
+
 // GenU形式のメッセージ型
+// content は GenU から [{text: "..."}] 配列 or 文字列で来るため z.any() で受け取る
 const genuMessageSchema = z.object({
   role: z.enum(['user', 'assistant']),
-  content: z.string(),
+  content: z.any(),
 });
 
 // リクエストスキーマ: GenU形式と簡易形式の両方を受け取れるよう定義
@@ -62,7 +70,7 @@ const app = new BedrockAgentCoreApp({
   invocationHandler: {
     requestSchema: requestSchema as any,
     process: async function (request: z.infer<typeof requestSchema>, context: any) {
-      console.error('Request:', JSON.stringify(request, null, 2));
+      log('[process] called. request:', request);
       // invoke前: S3からworkspaceにスキルをDL
       await syncFromS3();
 
@@ -74,22 +82,42 @@ const app = new BedrockAgentCoreApp({
       const isPromptArray = Array.isArray(request.prompt);
       const isGenu = hasMessages || isPromptArray;
 
-      // プロンプト抽出
-      let promptText: string;
-      if (hasMessages) {
-        // GenU形式(a): messages の最後の user ロールのメッセージを使用
-        const lastUserMsg = [...(request.messages ?? [])]
-          .reverse()
-          .find((m) => m.role === 'user');
-        promptText = lastUserMsg?.content ?? '';
-      } else if (isPromptArray) {
-        // GenU形式(b): prompt 配列の各要素の text を结合
-        promptText = (request.prompt as Array<{ text?: string }>)
-          .map((p) => p.text ?? '')
-          .join('');
+      // Mastraに渡すメッセージ配列を組み立てる
+      // GenU形式: messages（過去履歴） + prompt（最新userメッセージ）をマージ
+      // 簡昱形式: promptのみを使用
+      // CoreMessage互換型をリテラル型で定義
+      type CoreMsg = { role: 'user' | 'assistant'; content: string };
+      let mastraMessages: CoreMsg[];
+
+      if (isGenu) {
+        // 過去履歴を変換（content は [{text: "..."}] 配列 → 文字列）
+        const historyMessages: CoreMsg[] = (request.messages ?? []).map((m) => ({
+          role: m.role,
+          content: Array.isArray(m.content)
+            ? (m.content as Array<{ text?: string }>).map((c) => c.text ?? '').join('')
+            : String(m.content),
+        }));
+
+        // 最新userメッセージを prompt から抽出
+        let latestUserContent: string;
+        if (isPromptArray) {
+          // GenU形式(b): prompt は [{text: "..."}] 配列
+          latestUserContent = (request.prompt as Array<{ text?: string }>)
+            .map((p) => p.text ?? '')
+            .join('');
+        } else {
+          latestUserContent = typeof request.prompt === 'string' ? request.prompt : '';
+        }
+
+        // 過去履歴 + 最新userメッセージ
+        mastraMessages = [
+          ...historyMessages,
+          { role: 'user', content: latestUserContent },
+        ];
       } else {
-        // 簡易形式: prompt は文字列
-        promptText = typeof request.prompt === 'string' ? request.prompt : '';
+        // 簡易形式: prompt 文字列のみ
+        const promptText = typeof request.prompt === 'string' ? request.prompt : '';
+        mastraMessages = [{ role: 'user', content: promptText }];
       }
 
       const skillsAgent = mastra.getAgent('skillsAgent');
@@ -104,7 +132,15 @@ const app = new BedrockAgentCoreApp({
 
       // ストリーミングで応答を返却（dynamicModelがある場合は上書き）
       const streamOptions = dynamicModel ? { model: dynamicModel } as any : undefined;
-      const result = await skillsAgent.stream([{ role: 'user', content: promptText }], streamOptions);
+      log('[process] mastraMessages:', mastraMessages);
+      let result: any;
+      try {
+        result = await skillsAgent.stream(mastraMessages as any, streamOptions);
+        log('[process] stream started');
+      } catch (streamErr) {
+        log('[process] stream error:', streamErr);
+        throw streamErr;
+      }
 
       // ストリーミング（Generator）で返す
       // SDKが Content-Type: text/event-stream ヘッダーを自動付与してSSE送信する
@@ -119,6 +155,7 @@ const app = new BedrockAgentCoreApp({
 
             if (isGenu) {
               // GenU形式の出力: contentBlockDelta を data キーで包んで返す
+              // （@fastify/sse が data を自動的にJSON.stringifyするためオブジェクトのまま渡す）
               yield {
                 data: {
                   event: {
