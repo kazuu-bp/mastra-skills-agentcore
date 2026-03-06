@@ -18,6 +18,8 @@ const WORKSPACE_PATH_OUTPUTS = `${WORKSPACE_PATH}/outputs/`;
 /** presignedURL の有効期限（秒） */
 const PRESIGNED_URL_EXPIRES_IN = 180;
 
+/** 最後にアップロードしたファイルの更新時間 */
+let lastUploadedMtime = 0;
 
 /**
  * S3からローカルworkspaceにファイルをDLする
@@ -80,66 +82,75 @@ export async function syncToS3(): Promise<string | null> {
 
   console.log(`[s3-sync] outputs → S3 アップロード開始 (bucket: ${BUCKET_NAME})`);
 
-  // outputs ディレクトリが存在しない場合はスキップ（エラーなし）
-  let entries: import('fs').Dirent[];
+  let url: string | null = null;
+
   try {
-    entries = await readdir(WORKSPACE_PATH_OUTPUTS, { recursive: true, withFileTypes: true });
-  } catch (error: any) {
-    if (error?.code === 'ENOENT') {
-      console.log('[s3-sync] outputs ディレクトリが存在しないためスキップ');
+    // outputs ディレクトリが存在しない場合はスキップ（エラーなし）
+    let entries: import('fs').Dirent[];
+    try {
+      entries = await readdir(WORKSPACE_PATH_OUTPUTS, { recursive: true, withFileTypes: true });
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') {
+        console.log('[s3-sync] outputs ディレクトリが存在しないためスキップ');
+        return null;
+      }
+      console.error('[s3-sync] outputs ディレクトリ読み取りエラー:', error);
       return null;
     }
-    console.error('[s3-sync] outputs ディレクトリ読み取りエラー:', error);
-    return null;
-  }
 
-  // ファイルのみ抽出
-  const fileEntries = entries.filter((e) => e.isFile());
+    // ファイルのみ抽出
+    const fileEntries = entries.filter((e) => e.isFile());
 
-  // アップロード前にoutputsディレクトリの状態をログ出力（syncFromS3と同様）
-  const dirs = entries.filter((e) => e.isDirectory()).map((e) => join((e as any).parentPath || (e as any).path || '', e.name));
-  console.log(`[s3-sync] ${WORKSPACE_PATH_OUTPUTS} 以下: ディレクトリ ${dirs.length}個, ファイル ${fileEntries.length}個`);
-  if (dirs.length > 0) console.log(`[s3-sync] ディレクトリ一覧:\n`, dirs);
-  console.log(`[s3-sync] ファイル一覧:\n`, fileEntries.map((e) => join((e as any).parentPath ?? (e as any).path ?? WORKSPACE_PATH_OUTPUTS, e.name)));
+    // アップロード前にoutputsディレクトリの状態をログ出力（syncFromS3と同様）
+    const dirs = entries.filter((e) => e.isDirectory()).map((e) => join((e as any).parentPath || (e as any).path || '', e.name));
+    console.log(`[s3-sync] ${WORKSPACE_PATH_OUTPUTS} 以下: ディレクトリ ${dirs.length}個, ファイル ${fileEntries.length}個`);
+    if (dirs.length > 0) console.log(`[s3-sync] ディレクトリ一覧:\n`, dirs);
+    console.log(`[s3-sync] ファイル一覧:\n`, fileEntries.map((e) => join((e as any).parentPath ?? (e as any).path ?? WORKSPACE_PATH_OUTPUTS, e.name)));
 
-  if (fileEntries.length === 0) {
-    console.log('[s3-sync] アップロード対象ファイルなし');
-    return null;
-  }
+    if (fileEntries.length > 0) {
+      // stat を使って更新日時が最も新しいファイルを選択する
+      // （複数回のやり取りで outputs に古いファイルが残っていても最新1件のみ対象）
+      const fileStats = await Promise.all(
+        fileEntries.map(async (e) => {
+          const localPath = join((e as any).parentPath ?? (e as any).path ?? WORKSPACE_PATH_OUTPUTS, e.name);
+          const s = await stat(localPath);
+          return { localPath, mtimeMs: s.mtimeMs };
+        }),
+      );
+      const newest = fileStats.reduce((a, b) => (a.mtimeMs >= b.mtimeMs ? a : b));
+      console.log(`[s3-sync] 最新ファイル: ${newest.localPath} (mtime: ${new Date(newest.mtimeMs).toISOString()})`);
 
-  // stat を使って更新日時が最も新しいファイルを選択する
-  // （複数回のやり取りで outputs に古いファイルが残っていても最新1件のみ対象）
-  const fileStats = await Promise.all(
-    fileEntries.map(async (e) => {
-      const localPath = join((e as any).parentPath ?? (e as any).path ?? WORKSPACE_PATH_OUTPUTS, e.name);
-      const s = await stat(localPath);
-      return { localPath, mtimeMs: s.mtimeMs };
-    }),
-  );
-  const newest = fileStats.reduce((a, b) => (a.mtimeMs >= b.mtimeMs ? a : b));
-  console.log(`[s3-sync] 最新ファイル: ${newest.localPath} (mtime: ${new Date(newest.mtimeMs).toISOString()})`);
+      // 過去にアップロードしたファイルと同じか古い場合はスキップ
+      if (newest.mtimeMs <= lastUploadedMtime) {
+        console.log(`[s3-sync] 最新ファイルは既にアップロード済みのためスキップします。`);
+        return null;
+      }
 
-  const s3Key = `workspace/outputs/${relative(WORKSPACE_PATH_OUTPUTS, newest.localPath)}`;
+      const s3Key = `workspace/outputs/${relative(WORKSPACE_PATH_OUTPUTS, newest.localPath)}`;
 
-  try {
-    // ファイルを読み込んでアップロード
-    const body = await readFile(newest.localPath);
-    await s3Client.send(new PutObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: s3Key,
-      Body: body,
-    }));
-    console.log(`[s3-sync] アップロード完了: ${s3Key}`);
+      // ファイルを読み込んでアップロード
+      const body = await readFile(newest.localPath);
+      await s3Client.send(new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: s3Key,
+        Body: body,
+      }));
+      console.log(`[s3-sync] アップロード完了: ${s3Key}`);
 
-    // 署名付きURL（3分）を生成して返す
-    const url = await getSignedUrl(
-      s3Client,
-      new GetObjectCommand({ Bucket: BUCKET_NAME, Key: s3Key }),
-      { expiresIn: PRESIGNED_URL_EXPIRES_IN },
-    );
-    return url;
+      // 署名付きURL（3分）を生成して返す
+      url = await getSignedUrl(
+        s3Client,
+        new GetObjectCommand({ Bucket: BUCKET_NAME, Key: s3Key }),
+        { expiresIn: PRESIGNED_URL_EXPIRES_IN },
+      );
+
+      lastUploadedMtime = newest.mtimeMs;
+    } else {
+      console.log('[s3-sync] アップロード対象ファイルなし');
+    }
   } catch (error) {
-    console.error(`[s3-sync] ${newest.localPath} のアップロードエラー:`, error);
-    return null;
+    console.error(`[s3-sync] アップロード処理エラー:`, error);
   }
+
+  return url;
 }
