@@ -3,7 +3,7 @@
 # npm run build:agentcore (tsc) でビルドし、node で直接実行
 # ========================================
 
-FROM node:22-slim
+FROM public.ecr.aws/docker/library/node:22-slim
 
 WORKDIR /app
 
