@@ -1,0 +1,212 @@
+diff --git a/node_modules/@fastify/sse/index.js b/node_modules/@fastify/sse/index.js
+index f75077b..e3d1c95 100644
+--- a/node_modules/@fastify/sse/index.js
++++ b/node_modules/@fastify/sse/index.js
+@@ -10,7 +10,7 @@ const { pipeline } = require('stream/promises')
+  * @param {Function} serializer - Function to serialize data
+  * @returns {string} Formatted SSE message
+  */
+-function formatSSEMessage (message, serializer) {
++function formatSSEMessage(message, serializer) {
+   let payload = ''
+ 
+   if (typeof message === 'string') {
+@@ -61,12 +61,12 @@ function formatSSEMessage (message, serializer) {
+  * @param {Object} options - Transform options
+  * @returns {Transform} Transform stream
+  */
+-function createSSETransformStream (options = {}) {
++function createSSETransformStream(options = {}) {
+   const { serializer = JSON.stringify } = options
+ 
+   return new Transform({
+     objectMode: true,
+-    transform (chunk, encoding, callback) {
++    transform(chunk, encoding, callback) {
+       try {
+         const formatted = formatSSEMessage(chunk, serializer)
+         callback(null, formatted)
+@@ -86,7 +86,7 @@ class SSEContext {
+   #keepAlive
+   #headersSent
+ 
+-  constructor (options) {
++  constructor(options) {
+     this.reply = options.reply
+     this.#lastEventId = options.lastEventId || null
+     this.#isConnected = true
+@@ -121,7 +121,7 @@ class SSEContext {
+    * Gets the last event ID from the client's Last-Event-ID header.
+    * @returns {string|null} The last event ID or null if not present
+    */
+-  get lastEventId () {
++  get lastEventId() {
+     return this.#lastEventId
+   }
+ 
+@@ -129,7 +129,7 @@ class SSEContext {
+    * Checks if the SSE connection is still active.
+    * @returns {boolean} True if connected, false otherwise
+    */
+-  get isConnected () {
++  get isConnected() {
+     return this.#isConnected
+   }
+ 
+@@ -137,7 +137,7 @@ class SSEContext {
+    * Checks if the connection should be kept alive after handler completion.
+    * @returns {boolean} True if connection should be kept alive
+    */
+-  get shouldKeepAlive () {
++  get shouldKeepAlive() {
+     return this.#keepAlive
+   }
+ 
+@@ -145,7 +145,7 @@ class SSEContext {
+    * Marks the connection to be kept alive after the handler completes.
+    * Without calling this, the connection will close after the handler returns.
+    */
+-  keepAlive () {
++  keepAlive() {
+     this.#keepAlive = true
+   }
+ 
+@@ -153,7 +153,7 @@ class SSEContext {
+    * Closes the SSE connection and performs cleanup.
+    * Safe to call multiple times.
+    */
+-  close () {
++  close() {
+     if (!this.#isConnected) return
+ 
+     this.#isConnected = false
+@@ -165,7 +165,7 @@ class SSEContext {
+    * Registers a callback to be called when the connection closes.
+    * @param {Function} callback - Function to call on connection close
+    */
+-  onClose (callback) {
++  onClose(callback) {
+     this.closeCallbacks.push(callback)
+   }
+ 
+@@ -174,7 +174,7 @@ class SSEContext {
+    * Only calls the callback if a last event ID exists.
+    * @param {Function} callback - Async function that receives the last event ID
+    */
+-  async replay (callback) {
++  async replay(callback) {
+     if (!this.#lastEventId) return
+ 
+     await callback(this.#lastEventId)
+@@ -187,7 +187,7 @@ class SSEContext {
+    * Called automatically before the first SSE data is sent, but can
+    * also be called manually if needed.
+    */
+-  sendHeaders () {
++  sendHeaders() {
+     if (!this.#headersSent) {
+       // Get any headers set via reply.header() and transfer to raw response
+       const replyHeaders = this.reply.getHeaders()
+@@ -206,7 +206,7 @@ class SSEContext {
+    * @throws {Error} If connection is closed
+    * @throws {TypeError} If source type is invalid
+    */
+-  async send (source) {
++  async send(source) {
+     if (!this.#isConnected) {
+       throw new Error('SSE connection is closed')
+     }
+@@ -258,7 +258,7 @@ class SSEContext {
+    * @returns {Transform} A transform stream that formats data as SSE
+    * @throws {Error} If connection is closed
+    */
+-  stream () {
++  stream() {
+     if (!this.#isConnected) {
+       throw new Error('SSE connection is closed')
+     }
+@@ -281,7 +281,7 @@ class SSEContext {
+    * @returns {Promise<void>} Resolves when data is written
+    * @private
+    */
+-  writeToStream (data) {
++  writeToStream(data) {
+     return new Promise((resolve, reject) => {
+       if (!this.#isConnected) {
+         reject(new Error('SSE connection is closed'))
+@@ -322,7 +322,7 @@ class SSEContext {
+    * @param {number} interval - Heartbeat interval in milliseconds
+    * @private
+    */
+-  startHeartbeat (interval) {
++  startHeartbeat(interval) {
+     this.heartbeatTimer = setInterval(() => {
+       if (this.#isConnected) {
+         this.sendHeaders()
+@@ -340,7 +340,7 @@ class SSEContext {
+    * Stops the heartbeat timer.
+    * @private
+    */
+-  stopHeartbeat () {
++  stopHeartbeat() {
+     if (this.heartbeatTimer) {
+       clearInterval(this.heartbeatTimer)
+       this.heartbeatTimer = null
+@@ -352,7 +352,7 @@ class SSEContext {
+    * Stops heartbeat and executes all registered close callbacks.
+    * @private
+    */
+-  cleanup () {
++  cleanup() {
+     this.stopHeartbeat()
+ 
+     // Call all close callbacks
+@@ -374,10 +374,10 @@ class SSEContext {
+    * @returns {boolean} True if value is an SSE message object
+    * @private
+    */
+-  isSSEMessage (value) {
++  isSSEMessage(value) {
+     return typeof value === 'object' &&
+-           value !== null &&
+-           'data' in value
++      value !== null &&
++      'data' in value
+   }
+ 
+   /**
+@@ -386,13 +386,13 @@ class SSEContext {
+    * @returns {boolean} True if value is async iterable
+    * @private
+    */
+-  isAsyncIterable (value) {
++  isAsyncIterable(value) {
+     return value != null &&
+-           typeof value[Symbol.asyncIterator] === 'function'
++      typeof value[Symbol.asyncIterator] === 'function'
+   }
+ }
+ 
+-async function fastifySSE (fastify, opts) {
++async function fastifySSE(fastify, opts) {
+   const {
+     heartbeatInterval = 30000,
+     serializer = JSON.stringify
+@@ -405,13 +405,10 @@ async function fastifySSE (fastify, opts) {
+     const originalHandler = routeOptions.handler
+     const sseOptions = typeof routeOptions.sse === 'object' ? routeOptions.sse : {}
+ 
+-    routeOptions.handler = async function sseHandler (request, reply) {
+-      // Check if client accepts SSE
+-      const acceptHeader = request.headers.accept || ''
+-      if (!acceptHeader.includes('text/event-stream')) {
+-        // Fall back to regular handler for non-SSE requests
+-        return await originalHandler.call(this, request, reply)
+-      }
++    routeOptions.handler = async function sseHandler(request, reply) {
++      // NOTE: Accept: text/event-stream チェックを削除
++      // AWS AgentCore Runtime 経由のリクエストはこのヘッダーを付けないため、
++      // 常にSSEモードで動作させる
+ 
+       // Set up SSE response
+       reply.raw.setHeader('Content-Type', 'text/event-stream')

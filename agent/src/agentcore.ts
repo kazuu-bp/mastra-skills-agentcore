@@ -106,16 +106,13 @@ const app = new BedrockAgentCoreApp({
       const streamOptions = dynamicModel ? { model: dynamicModel } as any : undefined;
       const result = await skillsAgent.stream([{ role: 'user', content: promptText }], streamOptions);
 
-      // クライアントがSSEを要求しているかチェック
-      const acceptHeader = context.headers?.['accept'] || '';
-      const isSse = acceptHeader.includes('text/event-stream');
+      // ストリーミング（Generator）で返す
+      // SDKが Content-Type: text/event-stream ヘッダーを自動付与してSSE送信する
+      return (async function* () {
+        const reader = result.textStream.getReader();
+        let contentBlockIndex = 0;
 
-      if (isSse) {
-        // ストリーミング（Generator）で返す
-        return (async function* () {
-          const reader = result.textStream.getReader();
-          let contentBlockIndex = 0;
-
+        try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -138,8 +135,9 @@ const app = new BedrockAgentCoreApp({
             }
             contentBlockIndex++;
           }
-
+        } finally {
           // invoke後: workspace/outputs の最新ファイルをS3にアップロードし、URLがあれば返す
+          // エラー発生時も必ず実行される（Pythonの finally: clean_ws_directory() に相当）
           const outputUrl = await syncToS3();
           if (outputUrl) {
             const linkText = `\n\n📎  [出力ファイル](${outputUrl})`;
@@ -158,29 +156,8 @@ const app = new BedrockAgentCoreApp({
               yield { data: { text: linkText } };
             }
           }
-        })();
-      } else {
-        // 非ストリーミング（JSON）で返す
-        let fullText = '';
-        const reader = result.textStream.getReader();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) fullText += value;
         }
-
-        // invoke後: workspace/outputs の最新ファイルをS3にアップロードし、URLがあれば返す
-        const outputUrl = await syncToS3();
-        if (outputUrl) {
-          fullText += `\n\n📎  [出力ファイル](${outputUrl})`;
-        }
-
-        if (isGenu) {
-          return { content: fullText };
-        } else {
-          return { text: fullText };
-        }
-      }
+      })();
     },
   },
   pingHandler: async (): Promise<HealthStatus> => 'Healthy',
