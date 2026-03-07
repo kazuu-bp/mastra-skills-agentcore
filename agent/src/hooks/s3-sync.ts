@@ -138,6 +138,8 @@ export async function syncToS3(): Promise<string | null> {
       logger.info({ s3Key }, '[s3-sync] アップロード完了');
 
       // GenU上で署名付きURLを再取得しに行くのでURLをそのまま返す
+      // ただし、アクセスするために以下のロールにS3へのアクセス権を付与する必要がある。手動で行う
+      // GenerativeAiUseCasesStack-APIGetFileDownloadSignedU-*** の権限が必要
       url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
 
       lastUploadedMtime = newest.mtimeMs;
