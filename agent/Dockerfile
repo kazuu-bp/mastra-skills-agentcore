@@ -1,24 +1,15 @@
 # ========================================
-# マルチステージビルド: Mastra AgentCore
+# Mastra AgentCore: サンプルDockerfileに合わせたビルド方式
+# npm run build:agentcore (tsc) でビルドし、node で直接実行
 # ========================================
 
-# --- ステージ1: 依存関係インストールとビルド確認 ---
-FROM node:22-slim AS builder
+FROM public.ecr.aws/docker/library/node:22-slim
 
 WORKDIR /app
 
-# 依存関係ファイルをコピーしてインストール
-COPY package*.json ./
-RUN npm ci
-
-# ソースコードとTypeScript設定をコピー
-COPY src/ ./src/
-COPY tsconfig.json ./
-
-# --- ステージ2: 本番用イメージ ---
-FROM node:22-slim AS production
-
-WORKDIR /app
+ENV DOCKER_CONTAINER=1 \
+    AWS_REGION=ap-northeast-1 \
+    AWS_DEFAULT_REGION=ap-northeast-1
 
 # Python3 と pip、および実行に必要なパッケージをインストール
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -31,19 +22,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # python3 を python としても使えるようにシンボリックリンクを作成
 RUN ln -sf /usr/bin/python3 /usr/local/bin/python
 
-# 本番用依存関係のみインストール
-COPY package*.json ./
-RUN npm ci --omit=dev && npm install tsx
+# ソースコードをすべてコピー（devDependenciesも含めてインストールしてビルド）
+COPY . .
 
-# ビルダーステージからソースコードをコピー
-COPY --from=builder /app/src/ ./src/
-COPY --from=builder /app/tsconfig.json ./
+# 全依存関係インストール（devDependencies含む: tsc, tsx など）
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+# TypeScript を JS にビルド (dist/ に出力)
+RUN npm run build:agentcore
+
+# devDependencies を削除して本番モードに
+RUN npm prune --production
+ENV NODE_ENV=production
+
+# otel auto-instrumentations を追加（rootで実行してから non-root へ切り替え）
+RUN npm install @opentelemetry/auto-instrumentations-node
+
+# non-root ユーザーで実行
+# workspaceが使えなくなるかもしれないので無効化
+# USER node
+
 
 # AgentCore Runtime はポート8080を使用
+EXPOSE 9000
+EXPOSE 8000
 EXPOSE 8080
 
-# ENV MASTRA_LOG_LEVEL=error
 ENV MODEL=jp.anthropic.claude-sonnet-4-5-20250929-v1:0
 
-# AgentCore サーバーを起動
-CMD ["npx", "tsx", "src/agentcore.ts"]
+
+# ビルド済み JS を node で直接実行
+CMD ["node", "--require", "@opentelemetry/auto-instrumentations-node/register", "dist/agentcore.js", "--trace-warnings"]
