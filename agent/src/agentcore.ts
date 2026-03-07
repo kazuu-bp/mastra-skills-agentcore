@@ -4,6 +4,8 @@ import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
 import { mastra } from './mastra/index.js';
 import { syncFromS3, syncToS3 } from './hooks/s3-sync.js';
+import { logger } from './logger.js';
+
 
 // Bedrockクライアントのファクトリ（モデルIDを動的に指定するため）
 const bedrock = createAmazonBedrock({
@@ -11,12 +13,8 @@ const bedrock = createAmazonBedrock({
   credentialProvider: fromNodeProviderChain(),
 });
 
-// ログヘルパー: 同期・バッファなしでstderrへ書き出す（CloudWatch確実出力用）
-const log = (...args: any[]) => {
-  process.stderr.write(args.map(a => typeof a === 'string' ? a : JSON.stringify(a, null, 2)).join(' ') + '\n');
-};
 
-log('[agentcore] module loaded');
+logger.info('[agentcore] module loaded');
 
 // GenU形式のメッセージ型
 // content は GenU から [{text: "..."}] 配列 or 文字列で来るため z.any() で受け取る
@@ -70,7 +68,7 @@ const app = new BedrockAgentCoreApp({
   invocationHandler: {
     requestSchema: requestSchema as any,
     process: async function (request: z.infer<typeof requestSchema>, context: any) {
-      log('[process] called. request:', request);
+      logger.info({ request }, '[process] called. request:');
       // invoke前: S3からworkspaceにスキルをDL
       await syncFromS3();
 
@@ -132,13 +130,13 @@ const app = new BedrockAgentCoreApp({
 
       // ストリーミングで応答を返却（dynamicModelがある場合は上書き）
       const streamOptions = dynamicModel ? { model: dynamicModel } as any : undefined;
-      log('[process] mastraMessages:', mastraMessages);
+      logger.info({ mastraMessages }, '[process] mastraMessages:');
       let result: any;
       try {
         result = await skillsAgent.stream(mastraMessages as any, streamOptions);
-        log('[process] stream started');
+        logger.info('[process] stream started');
       } catch (streamErr) {
-        log('[process] stream error:', streamErr);
+        logger.error({ err: streamErr }, '[process] stream error:');
         throw streamErr;
       }
 

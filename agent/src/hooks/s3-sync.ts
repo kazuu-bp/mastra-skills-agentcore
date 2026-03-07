@@ -1,9 +1,9 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import S3SyncClientModule from 's3-sync-client';
 import { mkdir, readdir, readFile, stat } from 'fs/promises';
 
 import { join, relative } from 'path';
+import { logger } from '../logger.js';
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || 'ap-northeast-1',
@@ -27,7 +27,7 @@ let lastUploadedMtime = 0;
  */
 export async function syncFromS3(): Promise<void> {
   if (!BUCKET_NAME) {
-    console.log('[s3-sync] SKILLS_BUCKET_NAME が未設定のためスキップ');
+    logger.info('[s3-sync] SKILLS_BUCKET_NAME が未設定のためスキップ');
     return;
   }
 
@@ -36,14 +36,14 @@ export async function syncFromS3(): Promise<void> {
   try {
     const s = await stat(skillsDir);
     if (s.isDirectory()) {
-      console.log(`[s3-sync] skillsフォルダ (${skillsDir}) が既に存在するため、S3からの同期をスキップします`);
+      logger.info(`[s3-sync] skillsフォルダ (${skillsDir}) が既に存在するため、S3からの同期をスキップします`);
       return;
     }
   } catch (err: any) {
     // 存在しない場合はそのまま同期を実行
   }
 
-  console.log(`[s3-sync] S3 → ローカル同期開始 (bucket: ${BUCKET_NAME})`);
+  logger.info({ bucket: BUCKET_NAME }, '[s3-sync] S3 → ローカル同期開始');
   try {
     // ワークスペースディレクトリが存在しない場合は作成
     await mkdir(WORKSPACE_PATH, { recursive: true });
@@ -51,17 +51,17 @@ export async function syncFromS3(): Promise<void> {
     // s3://BUCKET/workspace/ -> ./workspace/ への同期
     await sync(`s3://${BUCKET_NAME}/workspace/`, WORKSPACE_PATH, { del: false });
 
-    console.log(`[s3-sync] S3 → ローカル同期完了`);
+    logger.info('[s3-sync] S3 → ローカル同期完了');
 
     // 同期後にワークスペースの状態をログ出力
     const entries = await readdir(WORKSPACE_PATH, { recursive: true, withFileTypes: true });
     const dirs = entries.filter((e) => e.isDirectory()).map((e) => join((e as any).parentPath || (e as any).path || '', e.name));
     const fileCount = entries.filter((e) => e.isFile()).length;
-    console.log(`[s3-sync] ${WORKSPACE_PATH} 以下: ディレクトリ ${dirs.length}個, ファイル ${fileCount}個`);
-    console.log(`[s3-sync] ディレクトリ一覧:\n`, dirs);
+    logger.info({ directoryCount: dirs.length, fileCount }, `[s3-sync] ${WORKSPACE_PATH} 以下`);
+    logger.info({ dirs }, '[s3-sync] ディレクトリ一覧:');
 
   } catch (error) {
-    console.error('[s3-sync] S3 → ローカル同期エラー:', error);
+    logger.error({ err: error }, '[s3-sync] S3 → ローカル同期エラー:');
   }
 }
 
@@ -76,11 +76,11 @@ export async function syncFromS3(): Promise<void> {
  */
 export async function syncToS3(): Promise<string | null> {
   if (!BUCKET_NAME) {
-    console.log('[s3-sync] SKILLS_BUCKET_NAME が未設定のためスキップ');
+    logger.info('[s3-sync] SKILLS_BUCKET_NAME が未設定のためスキップ');
     return null;
   }
 
-  console.log(`[s3-sync] outputs → S3 アップロード開始 (bucket: ${BUCKET_NAME})`);
+  logger.info({ bucket: BUCKET_NAME }, '[s3-sync] outputs → S3 アップロード開始');
 
   let url: string | null = null;
 
@@ -91,10 +91,10 @@ export async function syncToS3(): Promise<string | null> {
       entries = await readdir(WORKSPACE_PATH_OUTPUTS, { recursive: true, withFileTypes: true });
     } catch (error: any) {
       if (error?.code === 'ENOENT') {
-        console.log('[s3-sync] outputs ディレクトリが存在しないためスキップ');
+        logger.info('[s3-sync] outputs ディレクトリが存在しないためスキップ');
         return null;
       }
-      console.error('[s3-sync] outputs ディレクトリ読み取りエラー:', error);
+      logger.error({ err: error }, '[s3-sync] outputs ディレクトリ読み取りエラー:');
       return null;
     }
 
@@ -103,9 +103,9 @@ export async function syncToS3(): Promise<string | null> {
 
     // アップロード前にoutputsディレクトリの状態をログ出力（syncFromS3と同様）
     const dirs = entries.filter((e) => e.isDirectory()).map((e) => join((e as any).parentPath || (e as any).path || '', e.name));
-    console.log(`[s3-sync] ${WORKSPACE_PATH_OUTPUTS} 以下: ディレクトリ ${dirs.length}個, ファイル ${fileEntries.length}個`);
-    if (dirs.length > 0) console.log(`[s3-sync] ディレクトリ一覧:\n`, dirs);
-    console.log(`[s3-sync] ファイル一覧:\n`, fileEntries.map((e) => join((e as any).parentPath ?? (e as any).path ?? WORKSPACE_PATH_OUTPUTS, e.name)));
+    logger.info({ directoryCount: dirs.length, fileCount: fileEntries.length }, `[s3-sync] ${WORKSPACE_PATH_OUTPUTS} 以下`);
+    if (dirs.length > 0) logger.info({ dirs }, '[s3-sync] ディレクトリ一覧:');
+    logger.info({ files: fileEntries.map((e) => join((e as any).parentPath ?? (e as any).path ?? WORKSPACE_PATH_OUTPUTS, e.name)) }, '[s3-sync] ファイル一覧:');
 
     if (fileEntries.length > 0) {
       // stat を使って更新日時が最も新しいファイルを選択する
@@ -118,11 +118,11 @@ export async function syncToS3(): Promise<string | null> {
         }),
       );
       const newest = fileStats.reduce((a, b) => (a.mtimeMs >= b.mtimeMs ? a : b));
-      console.log(`[s3-sync] 最新ファイル: ${newest.localPath} (mtime: ${new Date(newest.mtimeMs).toISOString()})`);
+      logger.info({ localPath: newest.localPath, mtime: new Date(newest.mtimeMs).toISOString() }, '[s3-sync] 最新ファイル');
 
       // 過去にアップロードしたファイルと同じか古い場合はスキップ
       if (newest.mtimeMs <= lastUploadedMtime) {
-        console.log(`[s3-sync] 最新ファイルは既にアップロード済みのためスキップします。`);
+        logger.info('[s3-sync] 最新ファイルは既にアップロード済みのためスキップします。');
         return null;
       }
 
@@ -135,17 +135,17 @@ export async function syncToS3(): Promise<string | null> {
         Key: s3Key,
         Body: body,
       }));
-      console.log(`[s3-sync] アップロード完了: ${s3Key}`);
+      logger.info({ s3Key }, '[s3-sync] アップロード完了');
 
       // GenU上で署名付きURLを再取得しに行くのでURLをそのまま返す
       url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
 
       lastUploadedMtime = newest.mtimeMs;
     } else {
-      console.log('[s3-sync] アップロード対象ファイルなし');
+      logger.info('[s3-sync] アップロード対象ファイルなし');
     }
   } catch (error) {
-    console.error(`[s3-sync] アップロード処理エラー:`, error);
+    logger.error({ err: error }, '[s3-sync] アップロード処理エラー:');
   }
 
   return url;
