@@ -137,12 +137,8 @@ export async function syncToS3(): Promise<string | null> {
       }));
       console.log(`[s3-sync] アップロード完了: ${s3Key}`);
 
-      // 署名付きURL（3分）を生成して返す
-      url = await getSignedUrl(
-        s3Client,
-        new GetObjectCommand({ Bucket: BUCKET_NAME, Key: s3Key }),
-        { expiresIn: PRESIGNED_URL_EXPIRES_IN },
-      );
+      // GenU上で署名付きURLを再取得しに行くのでURLをそのまま返す
+      url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
 
       lastUploadedMtime = newest.mtimeMs;
     } else {
