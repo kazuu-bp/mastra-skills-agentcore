@@ -74,7 +74,7 @@ export async function syncFromS3(): Promise<void> {
  *
  * @returns 最新ファイルの署名付きURL（ファイルがなければ null）
  */
-export async function syncToS3(): Promise<string | null> {
+export async function syncToS3(): Promise<{ bucketName: string; s3Key: string } | null> {
   if (!BUCKET_NAME) {
     logger.info('[s3-sync] SKILLS_BUCKET_NAME が未設定のためスキップ');
     return null;
@@ -82,7 +82,7 @@ export async function syncToS3(): Promise<string | null> {
 
   logger.info({ bucket: BUCKET_NAME }, '[s3-sync] outputs → S3 アップロード開始');
 
-  let url: string | null = null;
+  let resultInfo: { bucketName: string; s3Key: string } | null = null;
 
   try {
     // outputs ディレクトリが存在しない場合はスキップ（エラーなし）
@@ -137,10 +137,7 @@ export async function syncToS3(): Promise<string | null> {
       }));
       logger.info({ s3Key }, '[s3-sync] アップロード完了');
 
-      // GenU上で署名付きURLを再取得しに行くのでURLをそのまま返す
-      // ただし、アクセスするために以下のロールにS3へのアクセス権を付与する必要がある。手動で行う
-      // GenerativeAiUseCasesStack-APIGetFileDownloadSignedU-*** の権限が必要
-      url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
+      resultInfo = { bucketName: BUCKET_NAME, s3Key: s3Key };
 
       lastUploadedMtime = newest.mtimeMs;
     } else {
@@ -150,5 +147,5 @@ export async function syncToS3(): Promise<string | null> {
     logger.error({ err: error }, '[s3-sync] アップロード処理エラー:');
   }
 
-  return url;
+  return resultInfo;
 }

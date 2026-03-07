@@ -5,6 +5,12 @@ import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
 import { mastra } from './mastra/index.js';
 import { syncFromS3, syncToS3 } from './hooks/s3-sync.js';
 import { logger } from './logger.js';
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION || 'ap-northeast-1',
+});
 
 
 // Bedrockクライアントのファクトリ（モデルIDを動的に指定するため）
@@ -173,10 +179,14 @@ const app = new BedrockAgentCoreApp({
         } finally {
           // invoke後: workspace/outputs の最新ファイルをS3にアップロードし、URLがあれば返す
           // エラー発生時も必ず実行される（Pythonの finally: clean_ws_directory() に相当）
-          const outputUrl = await syncToS3();
-          if (outputUrl) {
-            const linkText = `\n\n📎  [出力ファイル](${outputUrl})`;
+          const outputData = await syncToS3();
+          if (outputData) {
+            let outputUrl: string;
             if (isGenu) {
+              // GenUの場合は、フロント側でダウンロード用の署名付きURLを取得するため、S3のURLをそのまま返却
+              const region = process.env.AWS_REGION || 'ap-northeast-1';
+              outputUrl = `https://${outputData.bucketName}.s3.${region}.amazonaws.com/${outputData.s3Key}`;
+              const linkText = `\n\n📎  [出力ファイル](${outputUrl})`;
               yield {
                 data: {
                   event: {
@@ -188,6 +198,13 @@ const app = new BedrockAgentCoreApp({
                 },
               };
             } else {
+              // 通常はここでダウンロード用の署名付きURLを生成して返却
+              const command = new GetObjectCommand({
+                Bucket: outputData.bucketName,
+                Key: outputData.s3Key,
+              });
+              outputUrl = await getSignedUrl(s3Client, command, { expiresIn: 180 });
+              const linkText = `\n\n📎  [出力ファイル](${outputUrl})`;
               yield { data: { text: linkText } };
             }
           }
