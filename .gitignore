@@ -16,6 +16,7 @@ agent/src/mastra/public/workspace/.agents/skills/*
 
 s3/workspace/.agents/skills/*
 !s3/workspace/.agents/skills/pptx/
+!s3/workspace/.agents/skills/trouble-shooting/
 
 # dockerテスト時にs3同期されるファイルのgitを無効化
 agent/workspace
