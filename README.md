@@ -2,6 +2,12 @@
 
 AWS Bedrock AgentCore上で動作するMastraエージェント。[GenU](https://github.com/aws-samples/generative-ai-use-cases)で使用することができます。
 
+>[!IMPORTANT]
+> 生成したファイルはS3にアップロードされ、URLが返却されます。
+> GenUで利用する場合、GenU側で署名付きURLを取得するため、
+> 以下のロールにS3 `mastraagentcorestack-skillsbucke**` へのアクセス権を手動で付与する必要があります。
+> ロール: `GenerativeAiUseCasesStack-APIGetFileDownloadSignedU-***`
+
 ## フォルダ構成
 
 ```

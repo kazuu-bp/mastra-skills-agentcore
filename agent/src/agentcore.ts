@@ -184,8 +184,8 @@ const app = new BedrockAgentCoreApp({
             let outputUrl: string;
             if (isGenu) {
               // GenUの場合は、フロント側でダウンロード用の署名付きURLを取得するため、S3のURLをそのまま返却
-              // ただし、アクセスするために以下のロールにS3へのアクセス権を付与する必要がある。手動で行う
-              // GenerativeAiUseCasesStack-APIGetFileDownloadSignedU-*** の権限が必要
+              // ただし、アクセスするために以下のロールにS3へのアクセス権を手動で付与する必要がある。
+              // ロール： GenerativeAiUseCasesStack-APIGetFileDownloadSignedU-***
               const region = process.env.AWS_REGION || 'ap-northeast-1';
               outputUrl = `https://${outputData.bucketName}.s3.${region}.amazonaws.com/${outputData.s3Key}`;
               const linkText = `\n\n📎  [出力ファイル](${outputUrl})`;
