@@ -19,6 +19,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# 日本語フォントのインストール
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-ipafont fonts-ipaexfont \
+    fonts-takao fonts-takao-gothic fonts-takao-mincho \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+
 # python3 を python としても使えるようにシンボリックリンクを作成
 RUN ln -sf /usr/bin/python3 /usr/local/bin/python
 

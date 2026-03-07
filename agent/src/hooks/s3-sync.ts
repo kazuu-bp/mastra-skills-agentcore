@@ -66,13 +66,13 @@ export async function syncFromS3(): Promise<void> {
 }
 
 /**
- * workspace/outputs にある最新ファイルを S3 にアップロードし、署名付きURL（3分）を返す
- * invoke後に呼び出す
+ * workspace/outputs にある最新ファイルを S3 にアップロードし、アップロードしたバケット名とs3keyを返す
+ * Agentのinvoke後に呼び出される
  *
  * 複数回のやり取りで outputs に複数ファイルが溜まった場合は
  * 更新日時が最も新しいファイルのみを対象とする。
  *
- * @returns 最新ファイルの署名付きURL（ファイルがなければ null）
+ * @returns BucketName、S3Key
  */
 export async function syncToS3(): Promise<{ bucketName: string; s3Key: string } | null> {
   if (!BUCKET_NAME) {

@@ -153,8 +153,32 @@ const app = new BedrockAgentCoreApp({
         let contentBlockIndex = 0;
 
         try {
+          let nextRead = reader.read();
           while (true) {
-            const { done, value } = await reader.read();
+            const timeoutPromise = new Promise<{ timeout: true }>(resolve => setTimeout(() => resolve({ timeout: true }), 2000));
+            const readPromise = nextRead.then((res: any) => ({ timeout: false, res }));
+            const winner = await Promise.race([timeoutPromise, readPromise]);
+
+            if (winner.timeout) {
+              if (isGenu) {
+                // GenUタイムアウト対策のキープアライブとして . を送信
+                yield {
+                  data: {
+                    event: {
+                      contentBlockDelta: {
+                        delta: { text: '.' },
+                        contentBlockIndex,
+                      },
+                    },
+                  },
+                };
+              } else {
+                yield { data: { text: '.' } };
+              }
+              continue; // nextReadの待機を継続
+            }
+
+            const { done, value } = winner.res as any;
             if (done) break;
 
             if (isGenu) {
@@ -175,6 +199,7 @@ const app = new BedrockAgentCoreApp({
               yield { data: { text: value } };
             }
             contentBlockIndex++;
+            nextRead = reader.read(); // 次のチャンクの読み込みを開始
           }
         } finally {
           // invoke後: workspace/outputs の最新ファイルをS3にアップロードし、URLがあれば返す
