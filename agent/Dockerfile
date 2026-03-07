@@ -7,6 +7,7 @@ FROM public.ecr.aws/docker/library/node:22-slim
 
 WORKDIR /app
 
+
 ENV DOCKER_CONTAINER=1 \
     AWS_REGION=ap-northeast-1 \
     AWS_DEFAULT_REGION=ap-northeast-1
@@ -21,17 +22,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 日本語フォントのインストール
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    fonts-ipafont fonts-ipaexfont \
     fonts-takao fonts-takao-gothic fonts-takao-mincho \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-
 # python3 を python としても使えるようにシンボリックリンクを作成
 RUN ln -sf /usr/bin/python3 /usr/local/bin/python
 
-# ソースコードをすべてコピー（devDependenciesも含めてインストールしてビルド）
-COPY . .
+# 作業ディレクトリとキャッシュディレクトリの権限をあらかじめ node ユーザーに付与
+RUN mkdir -p /app /home/node/.npm && chown -R node:node /app /home/node
+
+# 以降の作業はすべて node ユーザーで実行する
+USER node
+
+# npxのインタラクティブな確認プロンプトをスキップし、キャッシュディレクトリの権限を確保
+ENV NPM_CONFIG_YES=true \
+    NPM_CONFIG_CACHE=/home/node/.npm
+
+# ソースコードを node ユーザー権限でコピー
+COPY --chown=node:node . .
 
 # 全依存関係インストール（devDependencies含む: tsc, tsx など）
 RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
@@ -43,13 +52,11 @@ RUN npm run build:agentcore
 RUN npm prune --production
 ENV NODE_ENV=production
 
-# otel auto-instrumentations を追加（rootで実行してから non-root へ切り替え）
+# otel auto-instrumentations を追加
 RUN npm install @opentelemetry/auto-instrumentations-node
 
-# non-root ユーザーで実行
-# workspaceが使えなくなるかもしれないので無効化
-# USER node
-
+# slidev, marpに必要なモジュールをインストール
+RUN npm install @slidev/cli @marp-team/marp-cli playwright
 
 # AgentCore Runtime はポート8080を使用
 EXPOSE 9000

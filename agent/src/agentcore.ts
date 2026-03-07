@@ -155,7 +155,7 @@ const app = new BedrockAgentCoreApp({
         try {
           let nextRead = reader.read();
           while (true) {
-            const timeoutPromise = new Promise<{ timeout: true }>(resolve => setTimeout(() => resolve({ timeout: true }), 2000));
+            const timeoutPromise = new Promise<{ timeout: true }>(resolve => setTimeout(() => resolve({ timeout: true }), 1000));
             const readPromise = nextRead.then((res: any) => ({ timeout: false, res }));
             const winner = await Promise.race([timeoutPromise, readPromise]);
 
