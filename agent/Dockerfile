@@ -23,8 +23,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 日本語フォントのインストール
 RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-takao fonts-takao-gothic fonts-takao-mincho \
+    fonts-noto-cjk fonts-noto-cjk-extra fonts-firacode \
+    curl unzip ca-certificates fontconfig \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Google Fonts (Poppins, Zen Maru Gothic, Dela Gothic One) の手動インストール
+RUN mkdir -p /usr/share/fonts/truetype/custom \
+    && curl -fLo /usr/share/fonts/truetype/custom/Poppins-Regular.ttf https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-Regular.ttf \
+    && curl -fLo /usr/share/fonts/truetype/custom/Poppins-Bold.ttf https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-Bold.ttf \
+    && curl -fLo /usr/share/fonts/truetype/custom/ZenMaruGothic-Regular.ttf https://github.com/google/fonts/raw/main/ofl/zenmarugothic/ZenMaruGothic-Regular.ttf \
+    && curl -fLo /usr/share/fonts/truetype/custom/ZenMaruGothic-Medium.ttf https://github.com/google/fonts/raw/main/ofl/zenmarugothic/ZenMaruGothic-Medium.ttf \
+    && curl -fLo /usr/share/fonts/truetype/custom/ZenMaruGothic-Bold.ttf https://github.com/google/fonts/raw/main/ofl/zenmarugothic/ZenMaruGothic-Bold.ttf \
+    && curl -fLo /usr/share/fonts/truetype/custom/DelaGothicOne-Regular.ttf https://github.com/google/fonts/raw/main/ofl/delagothicone/DelaGothicOne-Regular.ttf \
+    && fc-cache -fv
 
 # python3 を python としても使えるようにシンボリックリンクを作成
 RUN ln -sf /usr/bin/python3 /usr/local/bin/python
@@ -56,7 +68,13 @@ ENV NODE_ENV=production
 RUN npm install @opentelemetry/auto-instrumentations-node
 
 # slidev, marpに必要なモジュールをインストール
-RUN npm install @slidev/cli @marp-team/marp-cli playwright
+RUN npm install @slidev/cli @slidev/theme-default @marp-team/marp-cli playwright playwright-chromium
+
+# Playwrightのブラウザ（Chromium）とそのシステム依存関係をインストール
+# --with-deps で apt-get が実行されるため、一時的に root ユーザーに戻す
+USER root
+RUN npx playwright install --with-deps chromium
+USER node
 
 # AgentCore Runtime はポート8080を使用
 EXPOSE 9000
