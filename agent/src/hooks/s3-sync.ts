@@ -12,7 +12,7 @@ const S3SyncClient = (S3SyncClientModule as any).default || S3SyncClientModule;
 const { sync } = new S3SyncClient({ client: s3Client });
 
 const BUCKET_NAME = process.env.SKILLS_BUCKET_NAME || '';
-const WORKSPACE_PATH = process.env.WORKSPACE_PATH || './workspace/';
+const WORKSPACE_PATH = process.env.WORKSPACE_PATH || '/app/workspace/';
 const WORKSPACE_PATH_OUTPUTS = `${WORKSPACE_PATH}/outputs/`;
 
 /** presignedURL の有効期限（秒） */
@@ -49,7 +49,12 @@ export async function syncFromS3(): Promise<void> {
     await mkdir(WORKSPACE_PATH, { recursive: true });
 
     // s3://BUCKET/workspace/ -> ./workspace/ への同期
-    await sync(`s3://${BUCKET_NAME}/workspace/`, WORKSPACE_PATH, { del: false });
+    await sync(`s3://${BUCKET_NAME}/workspace/skills/`, `${WORKSPACE_PATH}/skills/`, {
+      del: false,
+      relocations: [
+        (currentPath: string) => currentPath.startsWith('workspace/skills/') ? currentPath.substring('workspace/skills/'.length) : currentPath
+      ]
+    });
 
     logger.info('[s3-sync] S3 → ローカル同期完了');
 

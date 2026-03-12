@@ -63,7 +63,7 @@ export class AgentcoreStack extends cdk.Stack {
       description: "Mastra Skills AgentCore Runtime",
       environmentVariables: {
         SKILLS_BUCKET_NAME: skillsBucket.bucketName,
-        WORKSPACE_PATH: "./workspace",
+        WORKSPACE_PATH: "/app/workspace",
       },
     });
 

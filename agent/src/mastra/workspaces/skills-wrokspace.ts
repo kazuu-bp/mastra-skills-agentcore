@@ -2,11 +2,11 @@ import { Workspace, LocalFilesystem, LocalSandbox } from '@mastra/core/workspace
 
 export const skillsWorkspace = new Workspace({
   filesystem: new LocalFilesystem({
-    basePath: './workspace',
-    instructions: '生成したファイルを出力する場合は、必ず "outputs/" ディレクトリに保存してください。',
+    basePath: '/app/workspace',
+    instructions: '生成したファイルをユーザーに渡す場合は、必ず "/app/workspace/outputs/" に保存してください。',
   }),
   sandbox: new LocalSandbox({
-    workingDirectory: './workspace',
+    workingDirectory: '/app/workspace',
   }),
-  skills: ['/skills'],
+  skills: ['/app/workspace/skills/**'],
 })
