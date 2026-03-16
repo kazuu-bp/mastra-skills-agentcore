@@ -12,6 +12,11 @@ const s3Client = new S3Client({
   region: process.env.AWS_REGION || 'ap-northeast-1',
 });
 
+const FIX_PROMPT = `
+    - 対話形式コマンドは禁止: npm create slidev など
+    - 様々なモジュールがインストール済みなので、コマンド実行時にエラーになったらインストールすること
+    - 途中で出力が終わらないように頑張ること
+`;
 
 // Bedrockクライアントのファクトリ（モデルIDを動的に指定するため）
 const bedrock = createAmazonBedrock({
@@ -137,6 +142,7 @@ const app = new BedrockAgentCoreApp({
           latestUserContent = (request.prompt as Array<{ text?: string }>)
             .map((p) => p.text ?? '')
             .join('');
+          latestUserContent += FIX_PROMPT;
         } else {
           latestUserContent = typeof request.prompt === 'string' ? request.prompt : '';
         }
@@ -167,11 +173,11 @@ const app = new BedrockAgentCoreApp({
       // memory.resource には user_id を使用（未設定の場合は session_id をフォールバック）
       const memoryOption = sessionId
         ? {
-            memory: {
-              thread: sessionId,
-              resource: request.user_id || sessionId,
-            },
-          }
+          memory: {
+            thread: sessionId,
+            resource: request.user_id || sessionId,
+          },
+        }
         : {};
       const streamOptions = {
         ...(dynamicModel ? { model: dynamicModel } : {}),
