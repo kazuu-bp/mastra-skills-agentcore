@@ -1,6 +1,6 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import S3SyncClientModule from 's3-sync-client';
-import { mkdir, readdir, readFile, stat } from 'fs/promises';
+import { mkdir, readdir, readFile, stat, writeFile } from 'fs/promises';
 
 import { join, relative } from 'path';
 import { logger } from '../logger.js';
@@ -12,14 +12,80 @@ const S3SyncClient = (S3SyncClientModule as any).default || S3SyncClientModule;
 const { sync } = new S3SyncClient({ client: s3Client });
 
 const BUCKET_NAME = process.env.SKILLS_BUCKET_NAME || '';
-const WORKSPACE_PATH = process.env.WORKSPACE_PATH || '/app/workspace/';
+const WORKSPACE_PATH = (process.env.WORKSPACE_PATH || '/app/workspace').replace(/\/$/, '');
 const WORKSPACE_PATH_OUTPUTS = `${WORKSPACE_PATH}/outputs/`;
 
-/** presignedURL の有効期限（秒） */
-const PRESIGNED_URL_EXPIRES_IN = 180;
+// agent.db のローカルパスと S3 キー
+const AGENT_DB_LOCAL_PATH = process.env.AGENT_DB_PATH || '/app/agent.db';
+const AGENT_DB_S3_KEY = 'agent.db';
 
 /** 最後にアップロードしたファイルの更新時間 */
 let lastUploadedMtime = 0;
+
+/**
+ * S3 から agent.db をダウンロードする
+ * ファイルが S3 に存在しない場合はスキップ（初回起動時など）
+ */
+async function downloadAgentDbFromS3(): Promise<void> {
+  try {
+    logger.info({ s3Key: AGENT_DB_S3_KEY, localPath: AGENT_DB_LOCAL_PATH }, '[s3-sync] agent.db S3 → ローカル ダウンロード開始');
+    const res = await s3Client.send(new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: AGENT_DB_S3_KEY,
+    }));
+
+    // ストリームをバッファに変換して書き出す
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of res.Body as AsyncIterable<Uint8Array>) {
+      chunks.push(chunk);
+    }
+    const buffer = Buffer.concat(chunks);
+    await writeFile(AGENT_DB_LOCAL_PATH, buffer);
+    logger.info({ localPath: AGENT_DB_LOCAL_PATH, bytes: buffer.length }, '[s3-sync] agent.db ダウンロード完了');
+  } catch (err: any) {
+    if (err?.name === 'NoSuchKey' || err?.Code === 'NoSuchKey') {
+      // 初回起動時など S3 に未登録の場合は正常スキップ
+      logger.info('[s3-sync] agent.db が S3 に存在しないため初回起動とみなしスキップ');
+    } else {
+      logger.warn({ err }, '[s3-sync] agent.db ダウンロードエラー（処理は継続）');
+    }
+  }
+}
+
+/**
+ * 起動時専用: S3 から agent.db をダウンロードする（agentcore.ts の initMastra() から呼ぶ）
+ * mastra の動的 import より前に呼び出すことで、LibSQLStore が正しい DB を開けるようにする
+ */
+export async function downloadAgentDbOnStartup(): Promise<void> {
+  await downloadAgentDbFromS3();
+}
+
+/**
+ * ローカルの agent.db を S3 にアップロードする
+ * ファイルが存在しない場合はスキップ
+ */
+async function uploadAgentDbToS3(): Promise<void> {
+  try {
+    await stat(AGENT_DB_LOCAL_PATH);
+  } catch {
+    logger.info('[s3-sync] agent.db がローカルに存在しないためアップロードをスキップ');
+    return;
+  }
+
+  try {
+    logger.info({ localPath: AGENT_DB_LOCAL_PATH, s3Key: AGENT_DB_S3_KEY }, '[s3-sync] agent.db ローカル → S3 アップロード開始');
+    const body = await readFile(AGENT_DB_LOCAL_PATH);
+    await s3Client.send(new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: AGENT_DB_S3_KEY,
+      Body: body,
+      ContentType: 'application/x-sqlite3',
+    }));
+    logger.info({ s3Key: AGENT_DB_S3_KEY, bytes: body.length }, '[s3-sync] agent.db アップロード完了');
+  } catch (err) {
+    logger.error({ err }, '[s3-sync] agent.db アップロードエラー');
+  }
+}
 
 /**
  * S3からローカルworkspaceにファイルをDLする
@@ -48,7 +114,7 @@ export async function syncFromS3(): Promise<void> {
     // ワークスペースディレクトリが存在しない場合は作成
     await mkdir(WORKSPACE_PATH, { recursive: true });
 
-    // s3://BUCKET/workspace/ -> ./workspace/ への同期
+    // s3://BUCKET/workspace/skills/ -> /app/workspace/skills/ への同期
     await sync(`s3://${BUCKET_NAME}/workspace/skills/`, `${WORKSPACE_PATH}/skills/`, {
       del: false,
       relocations: [
@@ -57,6 +123,9 @@ export async function syncFromS3(): Promise<void> {
     });
 
     logger.info('[s3-sync] S3 → ローカル同期完了');
+
+    // /app/workspace/outputs ディレクトリを作成
+    await mkdir(WORKSPACE_PATH_OUTPUTS, { recursive: true });
 
     // 同期後にワークスペースの状態をログ出力
     const entries = await readdir(WORKSPACE_PATH, { recursive: true, withFileTypes: true });
@@ -97,9 +166,12 @@ export async function syncToS3(): Promise<{ bucketName: string; s3Key: string } 
     } catch (error: any) {
       if (error?.code === 'ENOENT') {
         logger.info('[s3-sync] outputs ディレクトリが存在しないためスキップ');
+        // outputs がなくても agent.db はアップロードする
+        await uploadAgentDbToS3();
         return null;
       }
       logger.error({ err: error }, '[s3-sync] outputs ディレクトリ読み取りエラー:');
+      await uploadAgentDbToS3();
       return null;
     }
 
@@ -128,29 +200,30 @@ export async function syncToS3(): Promise<{ bucketName: string; s3Key: string } 
       // 過去にアップロードしたファイルと同じか古い場合はスキップ
       if (newest.mtimeMs <= lastUploadedMtime) {
         logger.info('[s3-sync] 最新ファイルは既にアップロード済みのためスキップします。');
-        return null;
+      } else {
+        const s3Key = `workspace/outputs/${relative(WORKSPACE_PATH_OUTPUTS, newest.localPath)}`;
+
+        // ファイルを読み込んでアップロード
+        const body = await readFile(newest.localPath);
+        await s3Client.send(new PutObjectCommand({
+          Bucket: BUCKET_NAME,
+          Key: s3Key,
+          Body: body,
+        }));
+        logger.info({ s3Key }, '[s3-sync] アップロード完了');
+
+        resultInfo = { bucketName: BUCKET_NAME, s3Key: s3Key };
+        lastUploadedMtime = newest.mtimeMs;
       }
-
-      const s3Key = `workspace/outputs/${relative(WORKSPACE_PATH_OUTPUTS, newest.localPath)}`;
-
-      // ファイルを読み込んでアップロード
-      const body = await readFile(newest.localPath);
-      await s3Client.send(new PutObjectCommand({
-        Bucket: BUCKET_NAME,
-        Key: s3Key,
-        Body: body,
-      }));
-      logger.info({ s3Key }, '[s3-sync] アップロード完了');
-
-      resultInfo = { bucketName: BUCKET_NAME, s3Key: s3Key };
-
-      lastUploadedMtime = newest.mtimeMs;
     } else {
       logger.info('[s3-sync] アップロード対象ファイルなし');
     }
   } catch (error) {
     logger.error({ err: error }, '[s3-sync] アップロード処理エラー:');
   }
+
+  // outputs の処理の成否に関わらず agent.db を常にアップロード
+  await uploadAgentDbToS3();
 
   return resultInfo;
 }

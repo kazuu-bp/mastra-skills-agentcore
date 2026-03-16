@@ -2,8 +2,8 @@ import { BedrockAgentCoreApp, type HealthStatus } from 'bedrock-agentcore/runtim
 import { z } from 'zod';
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
-import { mastra } from './mastra/index.js';
-import { syncFromS3, syncToS3 } from './hooks/s3-sync.js';
+// mastra は起動時に agent.db を S3 からDLした後に動的importする（下記 initMastra() を参照）
+import { syncFromS3, syncToS3, downloadAgentDbOnStartup } from './hooks/s3-sync.js';
 import { logger } from './logger.js';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -21,6 +21,26 @@ const bedrock = createAmazonBedrock({
 
 
 logger.info('[agentcore] module loaded');
+
+// mastra インスタンスを保持する変数（動的importで初期化される）
+let mastra: Awaited<typeof import('./mastra/index.js')>['mastra'];
+
+/**
+ * 起動時の初期化処理:
+ *   1. S3 から agent.db をダウンロード（存在する場合）
+ *   2. その後 mastra を動的 import して LibSQLStore に正しい DB を読み込ませる
+ *
+ * LibSQLStore はモジュールロード時に DB ファイルを開くため、
+ * 静的 import だと空の DB が作られてから後で上書きしても反映されない。
+ */
+async function initMastra(): Promise<void> {
+  logger.info('[agentcore] initMastra: agent.db を S3 からダウンロード開始');
+  await downloadAgentDbOnStartup();
+  logger.info('[agentcore] initMastra: mastra を動的 import');
+  const mod = await import('./mastra/index.js');
+  mastra = mod.mastra;
+  logger.info('[agentcore] initMastra: 完了');
+}
 
 // GenU形式のメッセージ型
 // content は GenU から [{text: "..."}] 配列 or 文字列で来るため z.any() で受け取る
@@ -74,7 +94,15 @@ const app = new BedrockAgentCoreApp({
   invocationHandler: {
     requestSchema: requestSchema as any,
     process: async function (request: z.infer<typeof requestSchema>, context: any) {
-      logger.info({ request }, '[process] called. request:');
+      // --- session_id の解決 ---
+      // AgentCore SDK は x-amzn-bedrock-agentcore-runtime-session-id ヘッダーを
+      // context.sessionId として自動的に提供する（Pythonの headers.get('x-amzn-bedrock-agentcore-runtime-session-id') に相当）
+      // リクエストボディの session_id（agent_session_id）が存在する場合はそちらを優先する
+      const headerSessionId: string | undefined = context?.sessionId;
+      const bodySessionId: string | undefined = request.session_id;
+      const sessionId: string | undefined = bodySessionId || headerSessionId;
+
+      logger.info({ request, sessionId, headerSessionId, bodySessionId }, '[process] called. request:');
       // invoke前: S3からworkspaceにスキルをDL
       await syncFromS3();
 
@@ -135,8 +163,21 @@ const app = new BedrockAgentCoreApp({
         : undefined;
 
       // ストリーミングで応答を返却（dynamicModelがある場合は上書き）
-      const streamOptions = dynamicModel ? { model: dynamicModel } as any : undefined;
-      logger.info({ mastraMessages }, '[process] mastraMessages:');
+      // session_id が存在する場合は memory.thread に設定してセッション継続性を確保
+      // memory.resource には user_id を使用（未設定の場合は session_id をフォールバック）
+      const memoryOption = sessionId
+        ? {
+            memory: {
+              thread: sessionId,
+              resource: request.user_id || sessionId,
+            },
+          }
+        : {};
+      const streamOptions = {
+        ...(dynamicModel ? { model: dynamicModel } : {}),
+        ...memoryOption,
+      } as any;
+      logger.info({ mastraMessages, sessionId }, '[process] mastraMessages:');
       let result: any;
       try {
         result = await skillsAgent.stream(mastraMessages as any, streamOptions);
@@ -243,4 +284,10 @@ const app = new BedrockAgentCoreApp({
 });
 
 // サーバーを起動
-app.run();
+// initMastra() で agent.db をS3からDLしてから mastra を初期化し、その後サーバーを起動する
+initMastra()
+  .then(() => app.run())
+  .catch((err) => {
+    logger.error({ err }, '[agentcore] 起動時の初期化に失敗しました');
+    process.exit(1);
+  });

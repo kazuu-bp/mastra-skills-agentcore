@@ -76,7 +76,8 @@ export const skillsAgent = new Agent({
   memory: new Memory({
     storage: new LibSQLStore({
       id: 'libsql-storage',
-      url: 'file:./agent.db',
+      // DATABASE_URL 環境変数（file:./mastra.dbなど）があればそれを使用し、なければデフォルトのパスを使用します
+      url: process.env.DATABASE_URL || 'file:/app/agent.db',
     }),
   }),
 });
